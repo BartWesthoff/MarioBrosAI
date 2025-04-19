@@ -2,8 +2,9 @@ from dolphin import event, gui,memory,controller
 import sys
 sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
 # os.sys.path.append(os.path.dirname(__file__))
-import numpy as np
+import os
 from PIL import Image
+import json
 # Colors
 red = 0xffff0000
 black = 0xff000000
@@ -14,6 +15,28 @@ frame_counter = 0
 previous_time = None
 frozen_frame_count = 0
 freeze_threshold = 60  # Number of frames to consider it "frozen"
+pending_movements = {}
+
+images_to_save = []
+
+
+import pygetwindow as gw
+def set_window_size(window_title, width, height):
+    windows = gw.getWindowsWithTitle(window_title)
+    if not windows:
+        raise Exception(f"{window_title} window not found! Make sure it's running and visible.")
+    
+    window = windows[0]
+    if window.isMinimized:
+        window.restore()
+    
+    window.resizeTo(width, height)
+
+# set_window_size("Dolphin scripting-preview2-4802-dirty |", 685, 404)
+set_window_size("Dolphin scripting-preview2-4802-dirty |", 404, 250) # pre defined do not touch
+
+
+
 def generate_checkpoints(level_start: float, level_end: float, num_checkpoints: int, width: float):
     """
     Returns a list of (start_x, end_x) checkpoint tuples.
@@ -26,6 +49,16 @@ def generate_checkpoints(level_start: float, level_end: float, num_checkpoints: 
         checkpoints.append((start, start + width))
     return checkpoints[1:]
 
+pos_start_screen = (105, 51)
+pos_end_screen = (830, 456)
+checkpoint_width = 100
+checkpoint1_start = 3030
+level1_last_cp = 6704 + 5 # margin
+level1_start_x = 760
+# draw a box in the middle of the screen
+s_cp_box = 10
+num_checkpoints = 10
+debug = False
 while True:
     await event.frameadvance()  # Wait for the next frame
 
@@ -50,18 +83,11 @@ while True:
     is_frozen = frozen_frame_count >= freeze_threshold and cur_x != 0.0 and cur_y != 0.0 and termin == 1 and current_time >0
     is_in_game = cur_x != 0.0 and cur_y != 0.0 and current_time >0
     # Draw GUI
-    pos_start_screen = (105, 51)
-    pos_end_screen = (830, 456)
+
     middle_x  = (pos_start_screen[0] + pos_end_screen[0]) // 2
     middle_y  = (pos_start_screen[1] + pos_end_screen[1]) // 2
-    gui.draw_rect(pos_start_screen, pos_end_screen, red, 0, 1)
-    checkpoint_width = 100
-    checkpoint1_start = 3030
-    level1_last_cp = 6704 + 5 # margin
-    level1_start_x = 760
-    # draw a box in the middle of the screen
-    s_cp_box = 10
-    num_checkpoints = 10
+    # gui.draw_rect(pos_start_screen, pos_end_screen, red, 0, 1)
+
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
 
     
@@ -84,24 +110,24 @@ while True:
             )
             break
     # draw completion bar using cur_x and level1_start_x
-    completion_bar_width = 200
-    completion_bar_height = 10
-    completion_bar_x = pos_start_screen[0] + (pos_end_screen[0] - pos_start_screen[0]) // 2 - completion_bar_width // 2
-    completion_bar_y = pos_start_screen[1] - 20
-    completion_percentage = (cur_x - level1_start_x) / (level1_last_cp - level1_start_x)
-    completion_bar_filled_width = int(completion_bar_width * completion_percentage)
+    # completion_bar_width = 200
+    # completion_bar_height = 10
+    # completion_bar_x = pos_start_screen[0] + (pos_end_screen[0] - pos_start_screen[0]) // 2 - completion_bar_width // 2
+    # completion_bar_y = pos_start_screen[1] - 20
+    # completion_percentage = (cur_x - level1_start_x) / (level1_last_cp - level1_start_x)
+    # completion_bar_filled_width = int(completion_bar_width * completion_percentage)
 
     # Draw the black box around the completion bar
-    if is_in_game:
-        gui.draw_rect((completion_bar_x, completion_bar_y),
-                    (completion_bar_x + completion_bar_width, completion_bar_y + completion_bar_height), black, 1)
+    # if is_in_game:
+    #     gui.draw_rect((completion_bar_x, completion_bar_y),
+    #                 (completion_bar_x + completion_bar_width, completion_bar_y + completion_bar_height), black, 1)
 
-        # Draw the filled portion of the completion bar
-        gui.draw_rect_filled((completion_bar_x, completion_bar_y),
-                            (completion_bar_x + completion_bar_filled_width, completion_bar_y + completion_bar_height), green, 1)
+    #     # Draw the filled portion of the completion bar
+    #     gui.draw_rect_filled((completion_bar_x, completion_bar_y),
+    #                         (completion_bar_x + completion_bar_filled_width, completion_bar_y + completion_bar_height), green, 1)
     
 
-
+    if debug:
         gui.draw_text((10, 10), red, f"Frame: {frame_counter}")
         gui.draw_text((10, 30), red, f"X Coordinate: {cur_x}")
         gui.draw_text((10, 50), red, f"X Coordinate 2: {second_x}")
@@ -112,9 +138,9 @@ while True:
         gui.draw_text((10, 150), red, f"Has Prop 2A: {has_prop_2A}")
         gui.draw_text((50, 270), red, f"Terminator: {termin}")
         gui.draw_text((50, 290), red, f"Time: {current_time}")
-            # Update for next frame
-        previous_time = current_time
-        frame_counter += 1
+        # Update for next frame
+    previous_time = current_time
+    frame_counter += 1
     if previous_time is not None:
         gui.draw_text((50, 310), red, f"Previous Time: {previous_time}")
         gui.draw_text((50, 330), red, f"Frozen Frames: {frozen_frame_count}")
@@ -123,14 +149,33 @@ while True:
         gui.draw_text((50, 350), green, f"TIMER FROZEN!")
 
     # Screenshot save (optional)
-    if frame_counter % 1000 == 1 and is_in_game:
+    if frame_counter % 60 == 0 and is_in_game and not is_frozen:
         width, height, rgba_bytes = await event.framedrawn()
         rgb_bytes = bytearray()
         for i in range(0, len(rgba_bytes), 4):
             rgb_bytes.extend(rgba_bytes[i:i+3])
-        filename = f"screenshots/frame_{frame_counter:05d}.ppm"
-        with open(filename, "wb") as f:
-            f.write(f"P6\n{width} {height}\n255\n".encode())
-            f.write(rgb_bytes)
+        img = Image.frombytes("RGB", (width, height), bytes(rgb_bytes))
+        images_to_save.append((img, frame_counter))
+        pending_movements[frame_counter] = filtered_keys
 
-
+    # check if home is pressed
+    if b_is_pressed2["Home"]:
+        # Save the images to disk
+        if images_to_save:
+            for img, frame in images_to_save[:-1]:
+                img.save(f"screenshots/screenshot_{frame}.png")
+            images_to_save.clear()
+        if pending_movements:
+            # remove last one
+            last_frame = max(pending_movements.keys())
+            del pending_movements[last_frame]
+            movements_path = "movements.json"
+            if os.path.exists(movements_path):
+                with open(movements_path, "r") as f:
+                    all_movements = json.load(f)
+            else:
+                all_movements = {}
+            all_movements.update(pending_movements)
+            with open(movements_path, "w") as f:
+                json.dump(all_movements, f, indent=4)
+        pending_movements.clear()
