@@ -1,6 +1,9 @@
-from dolphin import event, gui
-from dolphin import memory
-
+from dolphin import event, gui,memory,controller
+import sys
+sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+# os.sys.path.append(os.path.dirname(__file__))
+import numpy as np
+from PIL import Image
 # Colors
 red = 0xffff0000
 black = 0xff000000
@@ -60,6 +63,15 @@ while True:
     s_cp_box = 10
     num_checkpoints = 10
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
+
+    
+    b_is_pressed2 = controller.get_wiimote_buttons(0)
+    keys_of_interest = ["A", "B", "One", "Two", "Up", "Down", "Left", "Right"] # Up doesnt do anything i may remove it
+    filtered_keys = {key: b_is_pressed2[key] for key in keys_of_interest if key in b_is_pressed2}
+    y_offset = pos_start_screen[1]
+    for key, pressed in filtered_keys.items():
+        gui.draw_text((pos_end_screen[0] - 200, y_offset), red, f"{key}: {'Pressed' if pressed else 'Released'}")
+        y_offset += 20  # Increment y position for the next key
 
     # Inside loop
     s_cp_box = 10
