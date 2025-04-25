@@ -17,6 +17,7 @@ CYAN = 0xff00ffff
 frame_counter = 0
 previous_time = None
 frozen_frame_count = 0
+save_per_frames = 4
 freeze_threshold = 60
 pending_movements = {}
 images_to_save = []
@@ -36,13 +37,14 @@ middle_y = (pos_start_screen[1] + pos_end_screen[1]) // 2
 # Level Settings
 checkpoint_width = 100
 level1_start_x = 760
-level1_last_cp = 6709  # 6704 + 5 margin
+margin = 5
+level1_last_cp = 6704 + margin  # 6704 + 5 margin
 num_checkpoints = 10
 s_cp_box = 10
 checkpoints = []
 death_display_timer = 0  # Counts how long to show the death message
 previous_lives = None
-
+image_size = (84,84)
 
 def set_window_size(window_title, width, height):
     windows = gw.getWindowsWithTitle(window_title)
@@ -69,7 +71,8 @@ def read_game_memory():
         "speed": memory.read_f32(0x8154B8C8),
     }
 
-def draw_debug_info(data, is_frozen,in_game, death_display_timer):
+def draw_debug_info(data, is_frozen,in_game, death_display_timer,filtered_keys):
+    action = agent_action(filtered_keys)
     gui.draw_text((10, 10), RED, f"Frame: {frame_counter}")
     gui.draw_text((10, 30), RED, f"X Coordinate: {data['cur_x']}")
     gui.draw_text((10, 50), RED, f"X Coordinate 2: {data['second_x']}")
@@ -77,10 +80,15 @@ def draw_debug_info(data, is_frozen,in_game, death_display_timer):
     gui.draw_text((10, 90), RED, f"Y Coordinate: {data['cur_y']}")
     gui.draw_text((10, 110), RED, f"Lives: {data['lives']}")
     gui.draw_text((10, 130), RED, f"Mario Form: {mario_form_dict.get(data['mario_form'], 'Unknown')}")
-    gui.draw_text((10, 170), RED, f"Speed: {data['speed']}")
-    gui.draw_text((10, 190), RED, f"Is In Game: {in_game}")
+    gui.draw_text((10, 150), RED, f"Speed: {data['speed']}")
+    gui.draw_text((10, 170), RED, f"Is In Game: {in_game}")
+    chosen_action = [key for key, value in action.items() if value][0]
+    gui.draw_text((10, 190), RED, f"Agent Action: {chosen_action}")
     gui.draw_text((50, 270), RED, f"Terminator: {data['termin']}")
     gui.draw_text((50, 290), RED, f"Time: {data['current_time']}")
+    # chosen action 
+
+
     if previous_time is not None:
         gui.draw_text((50, 310), RED, f"Previous Time: {previous_time}")
         gui.draw_text((50, 330), RED, f"Frozen Frames: {frozen_frame_count}")
@@ -90,11 +98,16 @@ def draw_debug_info(data, is_frozen,in_game, death_display_timer):
     if death_display_timer > 0:
         gui.draw_text((50, 370), CYAN, "DIED!")
 
-def save_screenshots_and_movements():
+def save_screenshots_and_movements(small_screenshot=False):
     if images_to_save:
         for img_data, frame in images_to_save:
             width, height, rgba_bytes = img_data
-            image = Image.frombytes("RGBA", (width, height), rgba_bytes)
+            # if small screenshot resize and make it grayscale
+            if small_screenshot:
+                image = Image.frombytes("RGBA", (width, height), rgba_bytes).convert("L").resize(image_size)
+            else:
+                image = Image.frombytes("RGBA", (width, height), rgba_bytes)
+            
             image.save(f"screenshots\\d_{date}_frame_{frame}.png")
         images_to_save.clear()
     if pending_movements:
@@ -111,8 +124,8 @@ def save_screenshots_and_movements():
             json.dump(all_movements, f, indent=4)
         pending_movements.clear()
 
-def is_game_in_state(data):
-    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0
+def  is_game_in_state(data):
+    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700
 
 def detect_freeze(current_time, previous_time, frozen_frame_count, termin, cur_x, cur_y):
     if previous_time is not None and current_time == previous_time:
@@ -122,15 +135,42 @@ def detect_freeze(current_time, previous_time, frozen_frame_count, termin, cur_x
     is_frozen = frozen_frame_count >= freeze_threshold and cur_x != 0.0 and cur_y != 0.0 and termin == 1
     return frozen_frame_count, is_frozen
 
+def agent_action(filtered_keys):
+    sprint = filtered_keys.get("B", False)
+    move_right = filtered_keys.get("Right", False)
+    move_left = filtered_keys.get("Left", False) 
+ 
+    jump = filtered_keys.get("A", False)
+    crouch = filtered_keys.get("Down", False)
+    airbone = filtered_keys.get("One", False)
+    sprint_left = move_left and sprint
+    sprint_right = move_right and sprint
+    jump_left = move_left and jump
+    jump_right = move_right and jump
+    stand_still = not any([move_right, move_left, jump, crouch, airbone, sprint_left, sprint_right, jump_left, jump_right])
+    return {
+   
+        "jump": jump,
+        "crouch": crouch,
+        "airbone": airbone,
+        "sprint_left": sprint_left,
+        "sprint_right": sprint_right,
+        "jump_left": jump_left,
+        "jump_right": jump_right,
+        "move_right": move_right,
+        "move_left": move_left,
+        "none": stand_still,
+    }
 # Initialize checkpoints
 checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
-set_window_size("Dolphin scripting-preview2-4802-dirty |", 404, 250) # pre defined do not touch
+# set_window_size("Dolphin scripting-preview2-4802-dirty |", 404, 250) # pre defined do not touch
 # Main loop
+auto_save = True
 while True:
     await event.frameadvance()
     data = read_game_memory()
     b_is_pressed2 = controller.get_wiimote_buttons(0)
-    keys_of_interest = ["A", "B", "One", "Two", "Left", "Right", "Down"]
+    keys_of_interest = ["A", "B", "One", "Left", "Right", "Down"]
     filtered_keys = {k: b_is_pressed2[k] for k in keys_of_interest if k in b_is_pressed2}
 
     frozen_frame_count, is_frozen = detect_freeze(
@@ -160,7 +200,7 @@ while True:
 
     previous_lives = data['lives']
 
-    draw_debug_info(data, is_frozen, is_in_game, death_display_timer)
+    draw_debug_info(data, is_frozen, is_in_game, death_display_timer,filtered_keys)
     previous_time = data['current_time']
     frame_counter += 1
 
@@ -168,10 +208,10 @@ while True:
         death_display_timer -= 1
     
 
-    if frame_counter % 60 == 0 and is_in_game and not is_frozen:
+    if frame_counter % save_per_frames == 0 and is_in_game and not is_frozen:
         width, height, rgba_bytes = await event.framedrawn()
         images_to_save.append(((width, height, rgba_bytes), frame_counter))
         pending_movements[f"{date}_frame_{frame_counter}"] = filtered_keys
 
-    if b_is_pressed2.get("Home"):
-        save_screenshots_and_movements()
+    if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > level1_last_cp):
+        save_screenshots_and_movements(small_screenshot=True)
