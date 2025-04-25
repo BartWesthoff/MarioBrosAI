@@ -1,13 +1,11 @@
 from dolphin import event, gui, memory, controller
 import sys
+sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
 import os
 import json
 from datetime import datetime
 from PIL import Image
 import pygetwindow as gw
-
-# Setup
-sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
 
 # Colors
 RED = 0xffff0000
@@ -126,7 +124,7 @@ def detect_freeze(current_time, previous_time, frozen_frame_count, termin, cur_x
 
 # Initialize checkpoints
 checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
-
+set_window_size("Dolphin scripting-preview2-4802-dirty |", 404, 250) # pre defined do not touch
 # Main loop
 while True:
     await event.frameadvance()
