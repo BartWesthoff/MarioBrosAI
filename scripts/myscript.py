@@ -1,5 +1,6 @@
 from dolphin import event, gui, memory, controller,savestate
 import sys
+from collections import deque
 sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
 import os
 import json
@@ -20,7 +21,7 @@ save_per_frames = 4
 freeze_threshold = 60
 pending_movements = {}
 images_to_save = []
-
+recent_rewards = deque(maxlen=300)  # Store last 5 seconds of rewards at 60 FPS
 date = datetime.now().strftime("%Y-%m-%d_%H-%M")
 mario_form_dict = {
     0: "Small", 1: "Large", 2: "Fire Flower", 3: "Mini",
@@ -28,7 +29,7 @@ mario_form_dict = {
 }
 
 # Screen Settings
-pos_start_screen = (200, 100)
+pos_start_screen = (200, 100-20)
 pos_end_screen = (860-50, 500-50)
 middle_x = (pos_start_screen[0] + pos_end_screen[0]) // 2
 middle_y = (pos_start_screen[1] + pos_end_screen[1]) // 2
@@ -36,14 +37,19 @@ middle_y = (pos_start_screen[1] + pos_end_screen[1]) // 2
 # Level Settings
 checkpoint_width = 100
 level1_start_x = 760
-margin = 5
-level1_last_cp = 6704 + margin  # 6704 + 5 margin
+level1_last_cp = 6692
 num_checkpoints = 10
 s_cp_box = 10
 checkpoints = []
-death_display_timer = 0  # Counts how long to show the death message
+death_display_timer = 0
 previous_lives = None
-image_size = (84,84)
+previous_mario_form = None
+previous_checkpoint_idx = 0
+stored_lives = None
+stored_mario_form = None
+stored_checkpoint_idx = 0
+image_size = (224,224)
+
 def set_window_size(window_title, width, height):
     windows = gw.getWindowsWithTitle(window_title)
     if not windows:
@@ -53,9 +59,57 @@ def set_window_size(window_title, width, height):
         window.restore()
     window.resizeTo(width, height)
 
-def generate_checkpoints(level_start, level_end, num_checkpoints, width):
-    spacing = (level_end - level_start - width) / num_checkpoints
-    return [(level_start + i * spacing, level_start + i * spacing + width) for i in range(1, num_checkpoints + 1)]
+def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints):
+    reward = 0.0
+    new_checkpoint_idx = previous_checkpoint_idx
+
+    if previous_lives is not None and data['lives'] < previous_lives:
+        reward -= 10
+
+    if previous_mario_form is not None:
+        if data['mario_form'] < previous_mario_form:
+            reward -= 10
+        elif data['mario_form'] > previous_mario_form:
+            reward += 10
+
+    reward += data['speed'] / 3.0
+
+    # Only progress if entering a *higher* checkpoint
+    for idx, (start_x, end_x) in enumerate(checkpoints):
+        if start_x <= data['cur_x'] <= end_x:
+            if idx > previous_checkpoint_idx:
+                reward += 10
+                if idx == len(checkpoints) - 1:
+                    reward += 90000  # Big bonus at final checkpoint
+                new_checkpoint_idx = idx
+            break
+
+    reward -= 0.05
+    return round(reward, 2), new_checkpoint_idx
+
+
+def generate_checkpoints(level_start, level_end, num_checkpoints):
+    """Generate num_checkpoints - 1 evenly spaced checkpoints + 1 near the end."""
+    if num_checkpoints < 1:
+        return []
+
+    # Always reserve the last checkpoint at end - small margin
+    final_checkpoint = (level_end - 8, level_end + 8)  # ±8 units around 6692
+    if num_checkpoints == 1:
+        return [final_checkpoint]
+
+    # Spread the other checkpoints across the course
+    checkpoints = []
+    spacing = (level_end - level_start) / (num_checkpoints)
+
+    for i in range(num_checkpoints - 1):
+        start = level_start + i * spacing
+        end = start + spacing
+        checkpoints.append((start, end))
+
+    checkpoints.append(final_checkpoint)
+    return checkpoints
+
 
 def read_game_memory():
     return {
@@ -69,11 +123,14 @@ def read_game_memory():
         "speed": memory.read_f32(0x8154B8C8),
     }
 
-def draw_debug_info(data, is_frozen,in_game, death_display_timer,filtered_keys):
+def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display_timer, filtered_keys,curr_checkpoint_idx):
     action = agent_action(filtered_keys)
     gui.draw_text((10, 10), RED, f"Frame: {frame_counter}")
     gui.draw_text((10, 30), RED, f"X Coordinate: {data['cur_x']}")
-    gui.draw_text((10, 50), RED, f"X Coordinate 2: {data['second_x']}")
+    # gui.draw_text((10, 50), RED, f"X Coordinate 2: {data['second_x']}")
+    gui.draw_text((10, 50), RED, f"Reward: {reward}")
+    gui.draw_text((140, 50), RED, f"Mean Reward (5s): {mean_reward:.2f}")
+    gui.draw_text((140, 60), RED, f"Checkpoint: {curr_checkpoint_idx+1}/{len(checkpoints)}")
     gui.draw_text((10, 70), RED, f"Is Large: {data['mario_form'] > 0}")
     gui.draw_text((10, 90), RED, f"Y Coordinate: {data['cur_y']}")
     gui.draw_text((10, 110), RED, f"Lives: {data['lives']}")
@@ -173,12 +230,18 @@ def agent_action(filtered_keys):
         "none": stand_still,
     }
 
-checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
+checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
 set_window_size("Dolphin scripting-preview2-4802-dirty |", 860, 500)
 auto_save = True
 while True:
     await event.frameadvance()
     data = read_game_memory()
+    reward, new_checkpoint_idx = compute_reward(
+    data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints
+    )
+    recent_rewards.append(reward)
+    mean_reward = sum(recent_rewards) / len(recent_rewards)
+
     b_is_pressed2 = controller.get_wiimote_buttons(0)
     keys_of_interest = ["A", "B", "One", "Left", "Right", "Down"]
     filtered_keys = {k: b_is_pressed2[k] for k in keys_of_interest if k in b_is_pressed2}
@@ -208,11 +271,10 @@ while True:
             if data['lives'] < previous_lives:
                 death_display_timer = 120  # Show for ~2 seconds (assuming 60 fps)
 
-    previous_lives = data['lives']
 
-    draw_debug_info(data, is_frozen, is_in_game, death_display_timer,filtered_keys)
-    previous_time = data['current_time']
-    frame_counter += 1
+
+    draw_debug_info(data, reward, mean_reward, is_frozen, is_in_game, death_display_timer, filtered_keys, new_checkpoint_idx)
+
 
     if death_display_timer > 0:
         death_display_timer -= 1
@@ -221,7 +283,32 @@ while True:
     if frame_counter % save_per_frames == 0 and is_in_game and not is_frozen:
         width, height, rgba_bytes = await event.framedrawn()
         images_to_save.append(((width, height, rgba_bytes), frame_counter))
-        pending_movements[f"{date}_frame_{frame_counter}"] = filtered_keys
+        pending_movements[f"{date}_frame_{frame_counter}"] = pending_movements[f"{date}_frame_{frame_counter}"] = {
+    **filtered_keys,
+    "state": {
+        "reward": reward,
+        "mean_reward": mean_reward,
+        "cur_x": data["cur_x"],
+        "cur_y": data["cur_y"],
+        "lives": data["lives"],
+        "mario_form": data["mario_form"],
+        "speed": data["speed"],
+        "checkpoint_idx": new_checkpoint_idx
+    }
+}
 
-    if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > level1_last_cp):
-        save_screenshots_and_movements(small_screenshot=True,crop_to_subscreen=False)
+    if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > level1_last_cp+50):
+        save_screenshots_and_movements(small_screenshot=True,crop_to_subscreen=True)
+
+
+    if frame_counter % 10 == 0:
+        stored_lives = data['lives']
+        stored_mario_form = data['mario_form']
+        stored_checkpoint_idx = new_checkpoint_idx
+
+    # Always update previous_* immediately
+    previous_lives = data['lives']
+    previous_mario_form = data['mario_form']
+    previous_checkpoint_idx = new_checkpoint_idx
+    previous_time = data['current_time']
+    frame_counter += 1
