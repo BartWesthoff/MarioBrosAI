@@ -1,4 +1,4 @@
-from dolphin import event, gui, memory, controller
+from dolphin import event, gui, memory, controller,savestate
 import sys
 sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
 import os
@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 from PIL import Image
 import pygetwindow as gw
-
 # Colors
 RED = 0xffff0000
 BLACK = 0xff000000
@@ -29,8 +28,8 @@ mario_form_dict = {
 }
 
 # Screen Settings
-pos_start_screen = (105, 51)
-pos_end_screen = (830, 456)
+pos_start_screen = (200, 100)
+pos_end_screen = (860-50, 500-50)
 middle_x = (pos_start_screen[0] + pos_end_screen[0]) // 2
 middle_y = (pos_start_screen[1] + pos_end_screen[1]) // 2
 
@@ -45,7 +44,6 @@ checkpoints = []
 death_display_timer = 0  # Counts how long to show the death message
 previous_lives = None
 image_size = (84,84)
-
 def set_window_size(window_title, width, height):
     windows = gw.getWindowsWithTitle(window_title)
     if not windows:
@@ -86,8 +84,12 @@ def draw_debug_info(data, is_frozen,in_game, death_display_timer,filtered_keys):
     gui.draw_text((10, 190), RED, f"Agent Action: {chosen_action}")
     gui.draw_text((50, 270), RED, f"Terminator: {data['termin']}")
     gui.draw_text((50, 290), RED, f"Time: {data['current_time']}")
-    # chosen action 
-
+    # draw box
+    gui.draw_rect(
+        (pos_start_screen[0], pos_start_screen[1]),
+        (pos_end_screen[0], pos_end_screen[1]),
+        RED, 1
+    )
 
     if previous_time is not None:
         gui.draw_text((50, 310), RED, f"Previous Time: {previous_time}")
@@ -97,19 +99,28 @@ def draw_debug_info(data, is_frozen,in_game, death_display_timer,filtered_keys):
 
     if death_display_timer > 0:
         gui.draw_text((50, 370), CYAN, "DIED!")
+        if is_frozen and is_in_game and data['cur_x'] > level1_start_x and data['termin'] == 1:
+            savestate.load_from_slot(1)
+     
+    
 
-def save_screenshots_and_movements(small_screenshot=False):
+def save_screenshots_and_movements(small_screenshot=False, crop_to_subscreen=False):
     if images_to_save:
         for img_data, frame in images_to_save:
             width, height, rgba_bytes = img_data
-            # if small screenshot resize and make it grayscale
+            image = Image.frombytes("RGBA", (width, height), rgba_bytes)
+
+            if crop_to_subscreen:
+                left, top = pos_start_screen
+                right, bottom = pos_end_screen
+                image = image.crop((left, top, right, bottom))
+
             if small_screenshot:
-                image = Image.frombytes("RGBA", (width, height), rgba_bytes).convert("L").resize(image_size)
-            else:
-                image = Image.frombytes("RGBA", (width, height), rgba_bytes)
+                image = image.convert("L").resize(image_size)
             
             image.save(f"screenshots\\d_{date}_frame_{frame}.png")
         images_to_save.clear()
+
     if pending_movements:
         last_frame = max(pending_movements.keys())
         pending_movements.pop(last_frame, None)
@@ -161,10 +172,9 @@ def agent_action(filtered_keys):
         "move_left": move_left,
         "none": stand_still,
     }
-# Initialize checkpoints
+
 checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints, checkpoint_width)
-# set_window_size("Dolphin scripting-preview2-4802-dirty |", 404, 250) # pre defined do not touch
-# Main loop
+set_window_size("Dolphin scripting-preview2-4802-dirty |", 860, 500)
 auto_save = True
 while True:
     await event.frameadvance()
@@ -214,4 +224,4 @@ while True:
         pending_movements[f"{date}_frame_{frame_counter}"] = filtered_keys
 
     if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > level1_last_cp):
-        save_screenshots_and_movements(small_screenshot=True)
+        save_screenshots_and_movements(small_screenshot=True,crop_to_subscreen=False)
