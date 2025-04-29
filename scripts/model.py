@@ -15,9 +15,10 @@ class SpectralBlock(nn.Module):
         self.skip = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
 
     def forward(self, x):
-        out = self.relu(self.conv1(x))
+        out = self.relu(x)
+        out = self.relu(self.conv1(out))
         out = self.conv2(out)
-        return self.relu(out + self.skip(x))
+        return out + self.skip(x)
 
 # ------------------------------
 # Impala CNN Feature Extractor
@@ -32,10 +33,14 @@ class ImpalaCNN(nn.Module):
             SpectralBlock(32, 32)
         )
         self.block2 = nn.Sequential(
-            SpectralBlock(32, 64),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.MaxPool2d(3, stride=2),
+            SpectralBlock(64, 64),
             SpectralBlock(64, 64)
         )
         self.block3 = nn.Sequential(
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.MaxPool2d(3, stride=2),
             SpectralBlock(64, 64),
             SpectralBlock(64, 64)
         )

@@ -83,7 +83,7 @@ def get_frame(window):
 
 def preprocess_frame(frame):
     img = frame.resize((width, height))
-    img = np.array(img, dtype=np.float32) / 255.0
+    img = np.array(img, dtype=np.float32)
     img = np.expand_dims(img, axis=0)
     return img
     
