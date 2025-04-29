@@ -11,8 +11,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from collections import deque
 
-from scripts.model import BTRNetwork
-from scripts.utils_func import set_window_size, generate_checkpoints
+from model import BTRNetwork
+from utils_func import set_window_size, generate_checkpoints
 
 import threading
 import queue
@@ -86,7 +86,7 @@ def preprocess_frame(frame):
     img = np.array(img, dtype=np.float32)
     img = np.expand_dims(img, axis=0)
     return img
-    
+
 def get_action(frames):
     print(f"Entered get action at {time.time()} with {len(frames)} frames")
     preprocessed_frames = [preprocess_frame(frame) for frame in frames]

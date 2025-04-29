@@ -1,0 +1,12 @@
+numpy
+pillow
+pygetwindow
+pyrect
+opencv-python
+mss
+psutil
+matplotlib-inline
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch
+torchaudio
+torchvision

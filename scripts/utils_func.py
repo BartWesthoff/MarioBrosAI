@@ -1,19 +1,44 @@
-import pygetwindow as gw
-from dolphin import event, gui, memory, controller,savestate
+from dolphin import event, gui, memory, controller, savestate
+import sys
+import os
 
+# Define colors
 RED = 0xffff0000
 BLACK = 0xff000000
 GREEN = 0xff00ff00
 CYAN = 0xff00ffff
 
+# Try to import pygetwindow, but provide a fallback if it's not available
+try:
+    import pygetwindow as gw
+    GW_AVAILABLE = True
+    print("pygetwindow imported successfully in utils_func.py")
+except ImportError as e:
+    print(f"pygetwindow import error in utils_func.py: {e}")
+    print("pygetwindow not available, window resizing will be disabled")
+    GW_AVAILABLE = False
+
 def set_window_size(window_title, width, height):
-    windows = gw.getWindowsWithTitle(window_title)
-    if not windows:
-        raise Exception(f"{window_title} window not found!")
-    window = windows[0]
-    if window.isMinimized:
-        window.restore()
-    window.resizeTo(width, height)
+    """Set the size of a window with the given title.
+
+    If pygetwindow is not available, this function will do nothing.
+    """
+    if not GW_AVAILABLE:
+        print(f"Cannot resize window: pygetwindow module not available")
+        return
+
+    try:
+        windows = gw.getWindowsWithTitle(window_title)
+        if not windows:
+            print(f"Window '{window_title}' not found!")
+            return
+        window = windows[0]
+        if window.isMinimized:
+            window.restore()
+        window.resizeTo(width, height)
+        print(f"Window resized to {width}x{height}")
+    except Exception as e:
+        print(f"Error resizing window: {e}")
 
 
 def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints):
@@ -94,8 +119,8 @@ def detect_freeze(freeze_threshold, current_time, previous_time, frozen_frame_co
 def agent_action(filtered_keys):
     sprint = filtered_keys.get("B", False)
     move_right = filtered_keys.get("Right", False)
-    move_left = filtered_keys.get("Left", False) 
- 
+    move_left = filtered_keys.get("Left", False)
+
     jump = filtered_keys.get("A", False)
     crouch = filtered_keys.get("Down", False)
     airbone = filtered_keys.get("One", False)
@@ -105,7 +130,7 @@ def agent_action(filtered_keys):
     jump_right = move_right and jump
     stand_still = not any([move_right, move_left, jump, crouch, airbone, sprint_left, sprint_right, jump_left, jump_right])
     return {
-   
+
         "jump": jump,
         "crouch": crouch,
         "airbone": airbone,
