@@ -1,0 +1,1 @@
+C:\Users\bartw\OneDrive\Documenten\coding\MarioBrosAI\experiment\dolphin\Dolphin.exe --script C:\Users\bartw\OneDrive\Documenten\coding\MarioBrosAI\scripts\myscript.py

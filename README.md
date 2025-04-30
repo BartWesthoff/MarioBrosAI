@@ -26,14 +26,13 @@ This project implements a reinforcement learning agent for New Super Mario Bros 
    ```
 
 3. Set up Dolphin:
-   - Copy your Dolphin emulator to the `Experiment` folder
+   - Copy your Dolphin emulator to the `root` folder
    - Make sure you have the New Super Mario Bros Wii ROM in your Dolphin games directory
 
 ### Running the Agent
 
 1. Start the emulator with the script:
    ```
-   cd Experiment
    start.bat
    ```
 
@@ -49,11 +48,10 @@ This project implements a reinforcement learning agent for New Super Mario Bros 
 
 ```
 MarioBrosAI/
-├── Experiment/
-│   ├── dolphin/              # Dolphin emulator directory
-│   ├── data/                 # Directory for storing movement data
-│   ├── screenshots/          # Directory for storing screenshots
-│   └── start.bat             # Script to start Dolphin with the agent
+├── dolphin/                  # Dolphin emulator directory
+├── data/                     # Directory for storing movement data
+|   |── screenshots/          # Directory for storing screenshots     
+│
 │
 ├── scripts/
 │   ├── myscript.py           # Main script that runs in Dolphin
@@ -65,6 +63,7 @@ MarioBrosAI/
 │   └── SMNP01.s01            # Save state for New Super Mario Bros Wii
 │
 ├── requirements.txt          # Python dependencies
+├── start.bat                 # Script to start Dolphin with the agent
 └── README.md                 # Project documentation
 ```
 

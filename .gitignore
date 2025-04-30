@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# user-specific stuff
+data/*
+dolphin/*
+
 # Distribution / packaging
 .Python
 venv/
