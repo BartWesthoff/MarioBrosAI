@@ -1,32 +1,17 @@
-from dolphin import event, gui, memory, controller, savestate
-import sys
-import os
-
+from dolphin import memory
 # Define colors
 RED = 0xffff0000
 BLACK = 0xff000000
 GREEN = 0xff00ff00
 CYAN = 0xff00ffff
 
-# Try to import pygetwindow, but provide a fallback if it's not available
-try:
-    import pygetwindow as gw
-    GW_AVAILABLE = True
-    print("pygetwindow imported successfully in utils_func.py")
-except ImportError as e:
-    print(f"pygetwindow import error in utils_func.py: {e}")
-    print("pygetwindow not available, window resizing will be disabled")
-    GW_AVAILABLE = False
+import pygetwindow as gw
 
 def set_window_size(window_title, width, height):
     """Set the size of a window with the given title.
 
     If pygetwindow is not available, this function will do nothing.
     """
-    if not GW_AVAILABLE:
-        print(f"Cannot resize window: pygetwindow module not available")
-        return
-
     try:
         windows = gw.getWindowsWithTitle(window_title)
         if not windows:
@@ -46,13 +31,13 @@ def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoin
     new_checkpoint_idx = previous_checkpoint_idx
 
     if previous_lives is not None and data['lives'] < previous_lives:
-        reward -= 10
+        reward -= 1
 
     if previous_mario_form is not None:
         if data['mario_form'] < previous_mario_form:
-            reward -= 10
+            reward -= 1
         elif data['mario_form'] > previous_mario_form:
-            reward += 10
+            reward += 1
 
     reward += data['speed'] / 3.0
 
@@ -60,10 +45,10 @@ def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoin
     for idx, (start_x, end_x) in enumerate(checkpoints):
         if start_x <= data['cur_x'] <= end_x:
             if idx > previous_checkpoint_idx:
-                reward += 10
+                reward += 1
                 if idx == len(checkpoints) - 1:
-                    reward += 90000  # Big bonus at final checkpoint
-                new_checkpoint_idx = idx
+                    reward += 2  # Big bonus at final checkpoint
+            new_checkpoint_idx = idx
             break
 
     reward -= 0.05
@@ -106,7 +91,7 @@ def read_game_memory():
     }
 
 def  is_game_in_state(data):
-    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700
+    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700 
 
 def detect_freeze(freeze_threshold, current_time, previous_time, frozen_frame_count, termin, cur_x, cur_y):
     if previous_time is not None and current_time == previous_time:
