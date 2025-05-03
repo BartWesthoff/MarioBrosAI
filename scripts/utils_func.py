@@ -1,11 +1,16 @@
 from dolphin import memory
+import sys
+import os
+user = os.getlogin()
+sys.path.append(f"C:\\Users\\{user}\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+import pygetwindow as gw
 # Define colors
 RED = 0xffff0000
 BLACK = 0xff000000
 GREEN = 0xff00ff00
 CYAN = 0xff00ffff
 
-import pygetwindow as gw
+
 
 def set_window_size(window_title, width, height):
     """Set the size of a window with the given title.
@@ -90,7 +95,7 @@ def read_game_memory():
         "speed": memory.read_f32(0x8154B8C8),
     }
 
-def  is_game_in_state(data):
+def is_game_in_state(data):
     return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700 
 
 def detect_freeze(freeze_threshold, current_time, previous_time, frozen_frame_count, termin, cur_x, cur_y):

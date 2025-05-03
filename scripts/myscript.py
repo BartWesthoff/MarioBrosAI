@@ -1,25 +1,31 @@
-from dolphin import event, gui, controller, savestate
+from dolphin import event, gui, controller, savestate,memory
 import sys
-sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
-# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from collections import deque
 import os
+sys.path.append(f"C:\\Users\\{os.getlogin()}\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+from collections import deque
+
 import json
 from datetime import datetime
 cwd = os.getcwd()
-if os.path.basename(cwd) == "dolphin" and "Experiment" in cwd:
-    # If we're in Experiment/dolphin, go up two levels and then to scripts
-    scripts_dir = os.path.abspath(os.path.join(cwd, "..", "..", "scripts"))
-else:
-    # If we're in any other directory, assume scripts is in the parent directory
-    scripts_dir = os.path.abspath(os.path.join(os.path.dirname(cwd), "scripts"))
+data_dir = os.path.abspath(os.path.join(cwd , "data"))
+scripts_dir = os.path.abspath(os.path.join(cwd, "scripts"))
+screenshots_dir = os.path.join(data_dir, "screenshots")
+movements_path = os.path.join(data_dir, "movements.json")
+if not os.path.exists(data_dir):
+    os.makedirs(data_dir)
 
-# Add scripts directory to sys.path if it's not already there
+if not os.path.exists(screenshots_dir):
+    os.makedirs(screenshots_dir)
+
+if not os.path.exists(movements_path):
+    with open(movements_path, "w") as f:
+        json.dump({}, f, indent=4)
+
 if scripts_dir not in sys.path:
     sys.path.insert(0, scripts_dir)
-
+print(f"Added {scripts_dir} to sys.path")
 # Import utils_func
-from utils_func import (
+from scripts.utils_func import (
     set_window_size,
     generate_checkpoints,
     compute_reward,
@@ -29,7 +35,6 @@ from utils_func import (
     agent_action,
 )
 from PIL import Image
-import pygetwindow as gw
 
 # Colors
 RED = 0xffff0000
@@ -45,7 +50,7 @@ save_per_frames = 4
 freeze_threshold = 60
 pending_movements = {}
 images_to_save = []
-recent_rewards = deque(maxlen=300)  # Store last 5 seconds of rewards at 60 FPS
+recent_rewards = deque(maxlen=save_per_frames)  # Store last 5 seconds of rewards at 60 FPS
 date = datetime.now().strftime("%Y-%m-%d_%H-%M")
 mario_form_dict = {
     0: "Small", 1: "Large", 2: "Fire Flower", 3: "Mini",
@@ -99,7 +104,6 @@ def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display
         (pos_end_screen[0], pos_end_screen[1]),
         RED, 1
     )
-
     if previous_time is not None:
         gui.draw_text((50, 310), RED, f"Previous Time: {previous_time}")
         gui.draw_text((50, 330), RED, f"Frozen Frames: {frozen_frame_count}")
@@ -112,7 +116,8 @@ def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display
             savestate.load_from_slot(1)
 
 def save_screenshots_and_movements(small_screenshot=False, crop_to_subscreen=False):
-    data_dir = os.path.join(os.path.dirname(os.getcwd()), "data")
+    
+    gui.draw_text((pos_start_screen[0], pos_start_screen[1]), RED, "Saving screenshots and movements...")
     if images_to_save:
         for img_data, frame in images_to_save:
             width, height, rgba_bytes = img_data
@@ -150,11 +155,7 @@ def save_screenshots_and_movements(small_screenshot=False, crop_to_subscreen=Fal
             json.dump(all_movements, f, indent=4)
         pending_movements.clear()
 
-
-
 checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
-
-# Set window size if pygetwindow is available
 set_window_size("Dolphin scripting-preview2-4802-dirty |", 860, 500)
 auto_save = True
 while True:
@@ -181,21 +182,9 @@ while True:
         gui.draw_text((pos_end_screen[0] - 200, y_offset), RED, f"{key}: {'Pressed' if pressed else 'Released'}")
         y_offset += 20
 
-    # Draw checkpoint box if player inside a checkpoint
-    for start_x, end_x in checkpoints:
-        if start_x <= data['cur_x'] <= end_x:
-            gui.draw_rect_filled(
-                (middle_x - s_cp_box, middle_y - s_cp_box),
-                (middle_x + s_cp_box, middle_y + s_cp_box),
-                CYAN, 1
-            )
-            break
-
     if previous_lives is not None:
             if data['lives'] < previous_lives:
                 death_display_timer = 120  # Show for ~2 seconds (assuming 60 fps)
-
-
 
     draw_debug_info(data, reward, mean_reward, is_frozen, is_in_game, death_display_timer, filtered_keys, new_checkpoint_idx)
 
@@ -206,11 +195,9 @@ while True:
 
     if frame_counter % save_per_frames == 0 and is_in_game and not is_frozen:
         # Capture screenshot if PIL is available
-         
         width, height, rgba_bytes = await event.framedrawn()
         images_to_save.append(((width, height, rgba_bytes), frame_counter))
       
-
         # Save movement data (doesn't require PIL)
         pending_movements[f"{date}_frame_{frame_counter}"] = {
             **filtered_keys,

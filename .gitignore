@@ -9,11 +9,10 @@ __pycache__/
 # user-specific stuff
 data/*
 dolphin/*
-
+*.bat
 # Distribution / packaging
 .Python
 venv/
-Experiment/
 build/
 develop-eggs/
 dist/
