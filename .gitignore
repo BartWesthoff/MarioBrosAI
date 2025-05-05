@@ -7,10 +7,10 @@ __pycache__/
 *.so
 
 # user-specific stuff
-data/
-dolphin/
+data/*
+dolphin/*
+*.bat
 *.png
-
 # Distribution / packaging
 .Python
 venv/
