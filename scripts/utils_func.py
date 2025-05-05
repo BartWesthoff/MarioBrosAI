@@ -31,15 +31,15 @@ def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoin
     new_checkpoint_idx = previous_checkpoint_idx
 
     if previous_lives is not None and data['lives'] < previous_lives:
-        reward -= 1
+        reward -= 10
 
     if previous_mario_form is not None:
         if data['mario_form'] < previous_mario_form:
             reward -= 1
         elif data['mario_form'] > previous_mario_form:
-            reward += 1
+            reward += 3
 
-    reward += data['speed'] / 3.0
+    reward += data['speed'] / 2.0
 
     # Only progress if entering a *higher* checkpoint
     for idx, (start_x, end_x) in enumerate(checkpoints):
@@ -111,8 +111,8 @@ def agent_action(filtered_keys):
     airbone = filtered_keys.get("One", False)
     sprint_left = move_left and sprint
     sprint_right = move_right and sprint
-    jump_left = move_left and jump
-    jump_right = move_right and jump
+    jump_left = (move_left or sprint_left) and jump
+    jump_right = (move_right or sprint_right) and jump
     stand_still = not any([move_right, move_left, jump, crouch, airbone, sprint_left, sprint_right, jump_left, jump_right])
     return {
 

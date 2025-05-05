@@ -1,9 +1,12 @@
 from dolphin import event, gui, controller, savestate
 import sys
+import os
+
 sys.path.append("C:\\Users\\bartw\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
+sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from collections import deque
-import os
 import json
 from datetime import datetime
 cwd = os.getcwd()
