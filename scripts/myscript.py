@@ -79,7 +79,7 @@ previous_checkpoint_idx = 0
 stored_lives = None
 stored_mario_form = None
 stored_checkpoint_idx = 0
-image_size = (224,224)
+image_size = (140,114)
 
 
 def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display_timer, filtered_keys,curr_checkpoint_idx):
