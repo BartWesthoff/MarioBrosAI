@@ -75,33 +75,22 @@ def listen_for_reload(model, model_path='latest_model.pth', port_range=7000):
             conn.close()
     threading.Thread(target=handler, daemon=True).start()
 
-
 def do_action(action):
     action_string = ACTION_KEYS[action]
-    print(f"\t\t\tAction: {action_string}") # the \t's are for separating from rest of logs, so we can see it better
-                                            # To view logs, open dolphin, view tab->Show log, can even split it off into separate window
-    match action_string:
-        case "jump":
-            controller.set_wiimote_buttons(0, {"A": True})
-        case "crouch":
-            controller.set_wiimote_buttons(0, {"Down": True})
-        case "airborne":
-            controller.set_wiimote_buttons(0, {"One": True})
-        case "sprint_left":
-            controller.set_wiimote_buttons(0, {"Left": True, "B": True})
-        case "sprint_right":
-            controller.set_wiimote_buttons(0, {"Right": True, "B": True})
-        case "jump_left":
-            controller.set_wiimote_buttons(0, {"Left": True, "A": True})
-        case "jump_right":
-            controller.set_wiimote_buttons(0, {"Right": True, "A": True})
-        case "move_right":
-            controller.set_wiimote_buttons(0, {"Right": True})
-        case "move_left":
-            controller.set_wiimote_buttons(0, {"Left": True})
-        case "none":
-            # TODO: do we set all to none or just do nothing?
-            pass
+    print(f"\t\t\tAction: {action_string}")
+    button_map = {
+        "jump": {"A": True},
+        "crouch": {"Down": True},
+        "airborne": {"One": True},
+        "sprint_left": {"Left": True, "B": True},
+        "sprint_right": {"Right": True, "B": True},
+        "jump_left": {"Left": True, "A": True},
+        "jump_right": {"Right": True, "A": True},
+        "move_right": {"Right": True},
+        "move_left": {"Left": True},
+        "none": {}  # release all buttons
+    }
+    controller.set_wiimote_buttons(0, button_map.get(action_string, {}))
 
 # only used for getAction, and not for sending over socket. Because this is not pickle-able
 def process_frames(frames, target_size=(140, 114), frame_window=4):
@@ -128,9 +117,13 @@ def process_frames(frames, target_size=(140, 114), frame_window=4):
     return state
 
 
-def getAction(frames):
+def getAction(frames, epsilon=0.4):
     if len(frames) != 4:
         raise ValueError(f"Expected 4 frames, got {len(frames)}")
+    # epsion greedy action selection
+    if np.random.rand() < epsilon:
+        action = np.random.randint(0, len(ACTION_KEYS))
+        return action
     state = process_frames(frames).to(device)
 
     for i in range(3):
@@ -231,9 +224,6 @@ socket_conn = connect_to_socket()
 threading.Thread(target=threaded_socket_sender, args=(socket_conn,), daemon=True).start()
 # --
 threading.Thread(target=listen_for_reload, args=(model,), daemon=True).start()
-
-
-
 
 # In the main loop I try to place frame drawn after cpu intensive tasks, so that the game doesnt freeze or
 # slow its fps too much. I might have placed too many, so we should keep this in mind when we consider bugs or 
