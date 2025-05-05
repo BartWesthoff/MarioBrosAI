@@ -33,6 +33,15 @@ from model import BTRNetwork
 
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
 
+def project_root():
+    current_dir = os.getcwd()
+    while current_dir != os.path.dirname(current_dir):  # Stop at the root directory
+        if all(os.path.exists(os.path.join(current_dir, file)) for file in ['requirements.txt', 'README.md']):
+            return current_dir
+        current_dir = os.path.dirname(current_dir)
+    raise FileNotFoundError("Project root with 'requirements.txt' and 'README.md' not found.")
+root = project_root()
+
 def receive_experience(worker_id):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("localhost", 6000 + worker_id))
@@ -69,9 +78,6 @@ def broadcast_model_update(worker_ids):
         except Exception as e:
             print(f"[MANAGER] Error signaling worker {worker_id}: {e}")
 
-
-
-
 class ReplayBuffer:
     def __init__(self, max_size=10000):
         self.buffer = deque(maxlen=max_size)
@@ -90,8 +96,6 @@ class ReplayBuffer:
     def sample(self, batch_size):
         return random.sample(self.buffer, batch_size)
 
-
-
 pos_start_screen = (200, 100-20)
 pos_end_screen = (860-50, 500-50)
 
@@ -107,7 +111,6 @@ def train():
 
 
     while  True:
-
         all_unprocessed = sum(experience_buffers, [])
         replay_buffer.add(all_unprocessed)
         experience_buffers = [[] for _ in range(num_workers)]
@@ -219,12 +222,12 @@ def launch_workers():
         threading.Thread(target=receive_experience, args=(i,), daemon=True).start()
 
         subprocess.Popen([
-            "dolphin.exe",
+            dolphin_path,
             game_path,
             "--script",
-            r"C:\Users\halev\Desktop\Uni\mario\MarioBrosAI\scripts\online_trainer_latest.py",
+            online_trainer_path,
             "--save_state",
-            save_path,
+            game_save_dir,
             "--no-python-subinterpreters",
             # "--user",
             # user_folder
@@ -241,21 +244,27 @@ def relaunch_worker(worker_id):
     os.makedirs(user_folder, exist_ok=True)
 
     subprocess.Popen([
-        "dolphin.exe",
+        dolphin_path,
         game_path,
         "--script",
-        r"C:\Users\halev\Desktop\Uni\mario\MarioBrosAI\scripts\online_trainer_latest.py",
+        online_trainer_path,
         "--save_state",
-        save_path,
+        game_save_dir,
         "--no-python-subinterpreters",
         "--user",
         user_folder
     ], env=env)
     print(f"[MANAGER] Relaunched worker {worker_id}")
 
-
-game_path = "C:\\Users\\halev\\Desktop\\Uni\\mario\\MarioGame\\NSMB.rvz"
-save_path = "C:\\Users\\halev\\Desktop\\Uni\\mario\\MarioBrosAI\\StateSaves\\SMNP01.s01"
+dolphin_path = os.path.abspath(os.path.join(root, "dolphin", "Dolphin.exe"))
+game_path = os.path.join(root, "NSMB.rvz")
+game_save_dir = os.path.join(root, "StateSaves")
+game_save_dir = os.path.join(game_save_dir, "SMNP01.s01")
+scripts_dir = os.path.abspath(os.path.join(root, "scripts"))
+online_trainer_path = os.path.join(scripts_dir, "online_trainer_latest.py")
+print(f"[MANAGER] Using game path: {game_path}")
+print(f"[MANAGER] Using game save dir: {game_save_dir}")
+print(f"[MANAGER] Using online trainer path: {online_trainer_path}")
 num_workers = 1     # multi-worker requires --user and --user_folder in launch_workers and disables logging
 
 experience_buffers = [[] for _ in range(num_workers)]
@@ -268,7 +277,7 @@ step = 0
 # we need a base model that is common between worker and manager, so experiences are actually from the same model's
 # output. A base model can be generated with "offline_trainer.ipynb" and then saved as "btr_model.pth"
 # or you can just train a model with the manager and save it as "btr_model.pth"
-base_model_path = os.path.join(os.getcwd(), "btr_model.pth")
+base_model_path = os.path.join(root, "btr_model.pth")
 if os.path.exists(base_model_path):
     model.load_state_dict(torch.load(base_model_path, map_location=device))
     print(f"[MANAGER] Loaded model from {base_model_path}")
