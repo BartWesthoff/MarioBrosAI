@@ -78,6 +78,8 @@ previous_mario_form = None
 previous_checkpoint_idx = 0
 stored_lives = None
 stored_mario_form = None
+previous_x = None
+previous_clock = None
 stored_checkpoint_idx = 0
 image_size = (140,114)
 
@@ -163,9 +165,11 @@ auto_save = True
 while True:
     await event.frameadvance()
     data = read_game_memory()
-    reward, new_checkpoint_idx = compute_reward(
-    data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints
+    reward, new_checkpoint_idx = reward, new_checkpoint_idx = compute_reward(
+    data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
+    previous_x, previous_clock
     )
+
     recent_rewards.append(reward)
     mean_reward = sum(recent_rewards) / len(recent_rewards)
 
@@ -230,3 +234,5 @@ while True:
     previous_checkpoint_idx = new_checkpoint_idx
     previous_time = data['current_time']
     frame_counter += 1
+    previous_x = data['cur_x']
+    previous_clock = data['current_time']

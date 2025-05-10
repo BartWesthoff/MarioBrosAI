@@ -30,34 +30,67 @@ def set_window_size(window_title, width, height):
     except Exception as e:
         print(f"Error resizing window: {e}")
 
-
-def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints):
+def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
+                   previous_x, previous_clock):
     reward = 0.0
     new_checkpoint_idx = previous_checkpoint_idx
 
-    if previous_lives is not None and data['lives'] < previous_lives:
-        reward -= 10
+    # --- NEW reward base (velocity + time + death) ---
+    if previous_x is not None and previous_clock is not None:
+        v = data['cur_x'] - previous_x
+        c = previous_clock - data['current_time']
+        d = -15 if previous_lives is not None and data['lives'] < previous_lives else 0
+        reward += v + c + d
 
+    # --- OLD components ---
+    # Mario form change
     if previous_mario_form is not None:
         if data['mario_form'] < previous_mario_form:
-            reward -= 1
+            reward -= 4  # Got hit
         elif data['mario_form'] > previous_mario_form:
-            reward += 3
+            reward += 5  # Power-up
 
-    reward += data['speed'] / 2.0
+    # Add scaled speed bonus (encourages faster rightward motion)
+    reward += data['speed']*1.5
 
-    # Only progress if entering a *higher* checkpoint
+    # Checkpoint bonus
     for idx, (start_x, end_x) in enumerate(checkpoints):
         if start_x <= data['cur_x'] <= end_x:
             if idx > previous_checkpoint_idx:
-                reward += 1
+                reward += 3
                 if idx == len(checkpoints) - 1:
-                    reward += 2  # Big bonus at final checkpoint
+                    reward += 5  # Final checkpoint bonus
             new_checkpoint_idx = idx
             break
 
-    reward -= 0.05
-    return round(reward, 2), new_checkpoint_idx
+    # Small time penalty (anti-idling)
+    reward -= 1
+
+    # Clip to safe range
+    reward = max(-10, min(10, reward))
+
+    return round(reward, 4), new_checkpoint_idx
+
+# def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
+#                    previous_x, previous_clock):
+#     # Handle missing values on the first frame
+#     if previous_x is None or previous_clock is None:
+#         return 0.0, previous_checkpoint_idx
+
+#     # Compute velocity component (x1 - x0)
+#     v = data['cur_x'] - previous_x
+
+#     # Compute clock difference (c0 - c1)
+#     c = previous_clock - data['current_time']
+
+#     # Death penalty
+#     d = -15 if previous_lives is not None and data['lives'] < previous_lives else 0
+
+#     reward = v + c + d
+#     reward = max(-15, min(15, reward))  # Clip to range
+
+#     return round(reward, 2), previous_checkpoint_idx
+
 
 
 def generate_checkpoints(level_start, level_end, num_checkpoints):
