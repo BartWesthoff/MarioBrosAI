@@ -141,7 +141,7 @@ class Agent:
         if self.testing:
             self.min_sampling_size = 4000
         else:
-            self.min_sampling_size = 200000
+            self.min_sampling_size = 200
 
         self.lr = lr
 
@@ -343,8 +343,9 @@ class Agent:
                 self.learn_call()
 
     def learn_call(self):
-
+        print("entered learn call")
         if self.env_steps < self.min_sampling_size:
+            print(f"Not enough samples in memory: {self.env_steps} < {self.min_sampling_size}")
             return
 
         if self.per and self.per_beta_anneal:
@@ -358,13 +359,13 @@ class Agent:
             self.replace_target_network()
 
         idxs, states, actions, rewards, next_states, dones, weights = self.memory.sample(self.batch_size)
-
+        print("Sample taken")
         self.optimizer.zero_grad()
 
         # use this code to check your states are correct
 
-        # plt.imshow(states[0][0].unsqueeze(dim=0).cpu().permute(1, 2, 0))
-        # plt.show()
+        #plt.imshow(states[0][0].unsqueeze(dim=0).cpu().permute(1, 2, 0))
+        #plt.show()
         #
         # plt.imshow(states[0][1].unsqueeze(dim=0).cpu().permute(1, 2, 0))
         # plt.show()
@@ -380,6 +381,7 @@ class Agent:
 
 
         if self.c51:
+            print("Using C51")
             distr_v, qvals_v = self.net.both(states)
             state_action_values = distr_v[range(self.batch_size), actions.data]
             state_log_sm_v = F.log_softmax(state_action_values, dim=1)
@@ -407,7 +409,7 @@ class Agent:
             loss = loss_v.mean()
 
         elif not self.iqn and not self.c51 and not self.munchausen:  # non distributional
-
+            print("Using non-distributional")
             indices = np.arange(self.batch_size)
 
             q_pred = self.net.forward(states)
@@ -444,7 +446,7 @@ class Agent:
                 raise Exception("Unknown loss type")
 
         elif not self.iqn and not self.c51 and self.munchausen:  # non-distributional but with munchausen
-
+            print("Using munchausen")
             with torch.no_grad():
 
                 actions = actions.unsqueeze(1)
@@ -490,7 +492,7 @@ class Agent:
             loss = loss_squared.mean().to(self.net.device)
 
         elif self.iqn and not self.munchausen:
-
+            print("Using IQN")
             with torch.no_grad():
 
                 Q_targets_next, _ = self.tgt_net(next_states)
@@ -539,6 +541,7 @@ class Agent:
             loss = loss.mean()
 
         elif self.iqn and self.munchausen:
+            print("Using IQN with munchausen")
             with torch.no_grad():
                 Q_targets_next, _ = self.tgt_net(next_states)
 
