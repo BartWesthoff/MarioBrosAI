@@ -1,1 +1,1 @@
-C:\Users\bartw\OneDrive\Documenten\coding\MarioBrosAI\dolphin\Dolphin.exe --script C:\Users\bartw\OneDrive\Documenten\coding\MarioBrosAI\scripts\myscript.py
+C:\Users\maxja\Downloads\GameAI\MarioBrosAI\dolphin\Dolphin.exe --script C:\Users\maxja\Downloads\GameAI\MarioBrosAI\scripts\myscript.py
