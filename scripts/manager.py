@@ -93,7 +93,7 @@ ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
-num_workers = 2   # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
+num_workers = 1   # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
 experience_buffers = [[] for _ in range(num_workers)]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"[MANAGER] Using device: {device}")
@@ -110,6 +110,8 @@ agent = Agent(
     #eps_steps=10_000,
     testing=False
 )
+
+
 
 
 def launch_workers():
@@ -139,22 +141,29 @@ def launch_workers():
 
 import matplotlib.pyplot as plt
 
+def load_model():
+    global agent
+    model_files = [
+        os.path.join(model_path, f)
+        for f in os.listdir(model_path)
+        if f.endswith('.model')
+    ]
+    if model_files:
+        latest_model = max(model_files, key=os.path.getctime)
+        print(f"[MANAGER] Loading latest model: {latest_model}")
+        agent.load_models(latest_model)
+    else:
+        print("[MANAGER] No model found. Starting training from scratch.")
 
 def train():
     global agent
-
-
-
+    save_every = 5
 
     while True:
         time.sleep(10)
 
         if agent.memory.size > 0:
             _, states, _, _, next_states, _, _ = agent.memory.sample(3)
-
-            # plt.imshow(states[0][0].unsqueeze(dim=0).cpu().permute(1, 2, 0))
-            # plt.pause(0.01)
-            # plt.clf()
 
             for idx, state in enumerate(states):
                 for frame_idx in range(state.shape[0]):
@@ -169,6 +178,11 @@ def train():
             traceback.print_exc()
             continue
 
+        if agent.grad_steps % save_every == 0:
+            print(f"[MANAGER] Saving model at step {agent.grad_steps}...")
+            agent.save_model()
+            print(f"[MANAGER] Model saved.")
+
         print(f"Gradient steps: {agent.grad_steps}")
         print(f"[MANAGER] Training complete.")
 
@@ -180,12 +194,12 @@ game_save_dir = os.path.join(root, "StateSaves")
 game_save_dir = os.path.join(game_save_dir, "SMNP01.s01")
 scripts_dir = os.path.abspath(os.path.join(root, "scripts"))
 online_trainer_path = os.path.join(scripts_dir, "worker.py")
+model_path = os.path.join(root, "scripts")
 print(f"[MANAGER] Using game path: {game_path}")
 print(f"[MANAGER] Using game save dir: {game_save_dir}")
 print(f"[MANAGER] Using online trainer path: {online_trainer_path}")
 
 if __name__ == "__main__":
+    load_model()
     launch_workers()
-    # while True:
-    #     time.sleep(1)
     train()

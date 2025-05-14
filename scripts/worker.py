@@ -208,7 +208,6 @@ if __name__ == "__main__":
     while True:
         print(f"Start loop, frameCount: {frame_count}")
         
-        # get first frame
         frameStorage.append(await event.framedrawn())           # frame 0
         do_action(action)
         print("preSet")
@@ -216,8 +215,6 @@ if __name__ == "__main__":
         read_signal.set()
         print("postSet")
 
-        # second frame
-        #await event.framedrawn()
         frameStorage.append(await event.framedrawn())           # frame 1
         print("postSetDraw")
         do_action(action)
@@ -230,7 +227,6 @@ if __name__ == "__main__":
             print("\nWARNING: data was not available yet, reusing old data")
 
        
-
         frameStorage.append(await event.framedrawn())           # frame 2
         do_action(action)
         print("Image aquired")
@@ -239,8 +235,6 @@ if __name__ == "__main__":
         previous_x, previous_clock
         )
         print("Reward computed")
-        #await event.framedrawn()
-        #frames.append((width, height, img_data))
         frameStorage.append(await event.framedrawn())           # frame 3
         do_action(action)
         
@@ -252,18 +246,12 @@ if __name__ == "__main__":
 
         if len(frameStorage) == 5:
             if repeat_counter == 0:
-                #preprocess_queue.put((frames.copy(), action, reward))
                 preprocess_queue.put((frameStorage.getFrames(), action, reward))
                 time.sleep(0.01)
                 try:
                     state, action, reward, next_state = processed_queue.get_nowait()
                     experience = (state, action, reward, next_state)
                     experience_list.append(experience)
-                    # TODO REMOVE DEBUGGING CODE
-                    # debug_img = (state[0] * 255).astype(np.uint8)  # state shape: [4, H, W]
-                    # cv2.imwrite("worker_img.png", debug_img)
-                    #plt.imsave("worker_img.png", state[0], cmap='gray')
-                    # -----------------------------
                     send_queue.put(experience)
                 except queue.Empty:
                     print("\nWARNING:No processed data yet, skipping this frame\n")
@@ -284,10 +272,9 @@ if __name__ == "__main__":
 
             repeat_counter -= 1
 
-        #action = ACTION_TO_INDEX['jump_right']
         frameStorage.append(await event.framedrawn())                                # frame 4
         do_action(action)
-        print(f"Post action")
+        #print(f"Post action")
 
         if previous_lives is not None and previous_lives > data['lives']:
             print("-------------------")
@@ -307,4 +294,4 @@ if __name__ == "__main__":
         
         #frameStorage.append(await event.framedrawn())                                # frame 5
         #do_action(action)
-        print(f"End loop, frameCount: {frame_count}")
+        #print(f"End loop, frameCount: {frame_count}")
