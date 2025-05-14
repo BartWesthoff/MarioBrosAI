@@ -10,7 +10,7 @@ import sys
 import traceback
 import torch.nn.functional as F
 import numpy as np
-
+import cv2
 from collections import deque
 import queue
 from PIL import Image
@@ -67,12 +67,13 @@ def handle_worker_connection(worker_id):
             #print(f"[MANAGER] Received experience from worker {worker_id}")
 
 
-
             # Send back action
             response = pickle.dumps(action_discrete)
             response_size = len(response).to_bytes(4, "little")
             conn.sendall(response_size + response)
             print(f"[MANAGER] Sent action {ACTION_KEYS[action_discrete]} to worker {worker_id}")
+
+
 
         except Exception as e:
             print(f"[MANAGER] Error with worker {worker_id}: {e}")
@@ -104,8 +105,8 @@ agent = Agent(
     agent_name="online_agent",
     total_frames=300_000, # set too high to avoid too fast epsilon decay
     max_mem_size=10_000, # maybe too high
-    imagex=140,
-    imagey=114,
+    imagex=114, # IMPORTANT: This is switched because their memory expects height x width, while the rest is width x height
+    imagey=140,
     #eps_steps=10_000,
     testing=False
 )
@@ -136,12 +137,29 @@ def launch_workers():
         print(f"[MANAGER] Error launching workers: {e}")
         sys.exit(1)
 
+import matplotlib.pyplot as plt
+
+
 def train():
     global agent
 
 
+
+
     while True:
         time.sleep(10)
+
+        if agent.memory.size > 0:
+            _, states, _, _, next_states, _, _ = agent.memory.sample(3)
+
+            # plt.imshow(states[0][0].unsqueeze(dim=0).cpu().permute(1, 2, 0))
+            # plt.pause(0.01)
+            # plt.clf()
+
+            for idx, state in enumerate(states):
+                for frame_idx in range(state.shape[0]):
+                    frame = state[frame_idx].cpu().numpy()  # shape: (114, 140)
+                    plt.imsave(f"manager_state_{idx}_frame_{frame_idx}.png", frame, cmap='gray')
 
         print(f"[MANAGER] Training agent...")
         try:
