@@ -48,7 +48,7 @@ CYAN = 0xff00ffff
 frame_counter = 0
 previous_time = None
 frozen_frame_count = 0
-save_per_frames = 4
+save_per_frames = 1
 freeze_threshold = 60
 pending_movements = {}
 images_to_save = []
@@ -97,8 +97,8 @@ def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display
     gui.draw_text((10, 110), RED, f"Lives: {data['lives']}")
     gui.draw_text((10, 130), RED, f"Mario Form: {mario_form_dict.get(data['mario_form'], 'Unknown')}")
     gui.draw_text((10, 150), RED, f"Speed: {data['speed']}")
-    gui.draw_text((10, 170), RED, f"Is In Game: {in_game}")
-    chosen_action = [key for key, value in action.items() if value][0]
+    gui.draw_text((10, 170), GREEN if in_game else RED, f"Is In Game: {in_game}")
+    chosen_action = [key for key, value in action.items() if value]
     gui.draw_text((10, 190), RED, f"Agent Action: {chosen_action}")
     gui.draw_text((50, 270), RED, f"Terminator: {data['termin']}")
     gui.draw_text((50, 290), RED, f"Time: {data['current_time']}")

@@ -66,8 +66,8 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-        "jump_left": {"Left": True, "A": True},
-        "jump_right": {"Right": True, "A": True},
+        "jump_left": {"Left": True, "A": True, "B": True},
+        "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
         "none": {}  # release all buttons
@@ -281,7 +281,7 @@ if __name__ == "__main__":
             print("Died, resetting state. Reward: ", reward)
             print("-------------------")
             await event.framedrawn()
-            savestate.load_from_slot(1)
+            savestate.load_from_slot(3)
             await event.framedrawn()
         
         previous_lives = data['lives']

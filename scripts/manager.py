@@ -149,7 +149,8 @@ def load_model():
         if f.endswith('.model')
     ]
     if model_files:
-        latest_model = max(model_files, key=os.path.getctime)
+        print(f"[MANAGER] Found {model_files} model files.")
+        latest_model = min(model_files, key=os.path.getctime)
         print(f"[MANAGER] Loading latest model: {latest_model}")
         agent.load_models(latest_model)
     else:
@@ -191,7 +192,7 @@ def train():
 dolphin_path = os.path.abspath(os.path.join(root, "dolphin", "Dolphin.exe"))
 game_path = os.path.join(root, "NSMB.rvz")
 game_save_dir = os.path.join(root, "StateSaves")
-game_save_dir = os.path.join(game_save_dir, "SMNP01.s01")
+game_save_dir = os.path.join(game_save_dir, "SMNP01.s03")
 scripts_dir = os.path.abspath(os.path.join(root, "scripts"))
 online_trainer_path = os.path.join(scripts_dir, "worker.py")
 model_path = os.path.join(root, "scripts")
