@@ -1,8 +1,17 @@
 import os
 import sys
+# Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
+
+# Add virtual environment path
+venv_path = os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages')
+if os.path.exists(venv_path):
+    sys.path.append(venv_path)
+    print(f"[WORKER] Added venv path: {venv_path}")
+
+
 import time
 import threading
 import pickle
@@ -63,8 +72,8 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-        "jump_left": {"Left": True, "A": True},
-        "jump_right": {"Right": True, "A": True},
+        "jump_left": {"Left": True, "A": True, "B": True},
+        "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
         "none": {}  # release all buttons
@@ -155,7 +164,7 @@ ACTION_KEYS = [
                 "jump_right",
                 "jump_left",
                 "move_right",
-                "move_left", 
+                "move_left",
                 "none"]
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
@@ -197,22 +206,18 @@ if __name__ == "__main__":
     # move past initial frames, to skip initial loading of game
     for i in range(10):
         await event.framedrawn()
-        
-    
+
     while True:
         print(f"Start loop, frameCount: {frame_count}")
-        
+
         frameStorage.append(await event.framedrawn())           # frame 0
         do_action(action)
-        print("preSet")
         await event.frameadvance()
         read_signal.set()
-        print("postSet")
 
         frameStorage.append(await event.framedrawn())           # frame 1
-        print("postSetDraw")
         do_action(action)
-        
+
         old_data = data
         try:
             data = memory_queue.get_nowait()
@@ -220,12 +225,9 @@ if __name__ == "__main__":
         except queue.Empty:
             print("\nWARNING: data was not available yet, reusing old data")
 
-       
         frameStorage.append(await event.framedrawn())           # frame 2
         do_action(action)
-        #print("Image aquired")
 
-        #print("Reward computed")
         frameStorage.append(await event.framedrawn())           # frame 3
         do_action(action)
 
@@ -236,7 +238,6 @@ if __name__ == "__main__":
         data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
         previous_x, previous_clock
         )
-
         if len(rewards) == 5:
             rewards.pop(0)
         rewards.append(reward)
@@ -271,15 +272,12 @@ if __name__ == "__main__":
 
             repeat_counter -= 1
 
-
-        #print(f"Post action")
-
         if previous_lives is not None and previous_lives > data['lives']:
             print("-------------------")
             print("Died, resetting state. Reward: ", reward)
             print("-------------------")
             await event.framedrawn()
-            savestate.load_from_slot(1)
+            savestate.load_from_slot(3)
             await event.framedrawn()
         
         previous_lives = data['lives']

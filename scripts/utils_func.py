@@ -1,8 +1,14 @@
-from dolphin import memory
 import sys
 import os
+# Original path
 user = os.getlogin()
 sys.path.append(f"C:\\Users\\{user}\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+
+# Add virtual environment path
+venv_path = os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages')
+if os.path.exists(venv_path):
+    sys.path.append(venv_path)
+    print(f"[UTILS] Added venv path: {venv_path}")
 import pygetwindow as gw
 # Define colors
 RED = 0xffff0000
@@ -91,8 +97,6 @@ def compute_reward(data, previous_lives, previous_mario_form, previous_checkpoin
 
 #     return round(reward, 2), previous_checkpoint_idx
 
-
-
 def generate_checkpoints(level_start, level_end, num_checkpoints):
     """Generate num_checkpoints - 1 evenly spaced checkpoints + 1 near the end."""
     if num_checkpoints < 1:
@@ -117,6 +121,7 @@ def generate_checkpoints(level_start, level_end, num_checkpoints):
 
 
 def read_game_memory():
+    from dolphin import memory
     return {
         "cur_x": memory.read_f32(0x815E425C),
         "cur_y": memory.read_f32(0x815E38E4),
@@ -129,7 +134,7 @@ def read_game_memory():
     }
 
 def is_game_in_state(data):
-    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700 
+    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700
 
 def detect_freeze(freeze_threshold, current_time, previous_time, frozen_frame_count, termin, cur_x, cur_y):
     if previous_time is not None and current_time == previous_time:
@@ -146,21 +151,26 @@ def agent_action(filtered_keys):
 
     jump = filtered_keys.get("A", False)
     crouch = filtered_keys.get("Down", False)
-    airbone = filtered_keys.get("One", False)
+    airborne = filtered_keys.get("One", False)
     sprint_left = move_left and sprint
     sprint_right = move_right and sprint
     jump_left = (move_left or sprint_left) and jump
     jump_right = (move_right or sprint_right) and jump
-    stand_still = not any([move_right, move_left, jump, crouch, airbone, sprint_left, sprint_right, jump_left, jump_right])
-    return {
+    stand_still = not any([move_right, move_left, jump, crouch, airborne, sprint_left, sprint_right, jump_left, jump_right])
 
-        "jump": jump,
-        "crouch": crouch,
-        "airbone": airbone,
-        "sprint_left": sprint_left,
-        "sprint_right": sprint_right,
+    remove_some = True
+    if remove_some:
+        if any([crouch, airborne, sprint_left, jump]) and not any([move_right, move_left]):
+            stand_still = True
+            crouch = airborne = sprint_left = jump = False
+    return {
+        # "jump": jump,
+        # "crouch": crouch,
+        # "airborne": airborne,
+        # "sprint_left": sprint_left,
         "jump_left": jump_left,
         "jump_right": jump_right,
+        "sprint_right": sprint_right,
         "move_right": move_right,
         "move_left": move_left,
         "none": stand_still,

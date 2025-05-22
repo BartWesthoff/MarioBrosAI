@@ -48,7 +48,7 @@ def handle_worker_connection(worker_id):
 
 
             (state, action, reward, next_state) = experience
-            
+
             # Get action from model
             next_state_batched = np.expand_dims(next_state, axis=0)
             action_tensor = agent.choose_action(next_state_batched)
@@ -80,19 +80,19 @@ ACTION_KEYS = [
                 "jump_right",
                 "jump_left",
                 "move_right",
-                "move_left", 
+                "move_left",
                 "none"]
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
-num_workers = 1  # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
+num_workers = 1   # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
 experience_buffers = [[] for _ in range(num_workers)]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"[MANAGER] Using device: {device}")
 agent = Agent(
     n_actions=NUM_ACTIONS,
-    input_dims=(4, 140, 114), # 4 x width x height 
+    input_dims=(4, 140, 114), # 4 x width x height
     device=device,
     num_envs=1, # havent tried this with 2, so keep this at 1, even when using multiple workers
     agent_name="online_agent",
@@ -117,6 +117,16 @@ def launch_workers():
             user_folder = os.path.abspath(f"DolphinUser_{i}")
             os.makedirs(user_folder, exist_ok=True)
             threading.Thread(target=handle_worker_connection, args=(i,), daemon=True).start()
+
+            # Print debug information
+            print(f"[MANAGER] Launching Dolphin with the following parameters:")
+            print(f"[MANAGER] Dolphin path: {dolphin_path}")
+            print(f"[MANAGER] Game path: {game_path}")
+            print(f"[MANAGER] Script path: {online_trainer_path}")
+            print(f"[MANAGER] Save state path: {game_save_dir}")
+            print(f"[MANAGER] User folder: {user_folder}")
+
+            # Launch Dolphin with the worker script
             subprocess.Popen([
                 dolphin_path,
                 game_path,
@@ -128,8 +138,11 @@ def launch_workers():
                 "--user",
                 user_folder
             ], env=env)
+
+            print(f"[MANAGER] Dolphin launched with worker ID {i}")
     except Exception as e:
         print(f"[MANAGER] Error launching workers: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 import matplotlib.pyplot as plt
@@ -142,7 +155,8 @@ def load_model():
         if f.endswith('.model')
     ]
     if model_files:
-        latest_model = max(model_files, key=os.path.getctime)
+        print(f"[MANAGER] Found {model_files} model files.")
+        latest_model = min(model_files, key=os.path.getctime)
         print(f"[MANAGER] Loading latest model: {latest_model}")
         agent.load_models(latest_model)
     else:
@@ -181,10 +195,10 @@ def train():
 
 
 
-dolphin_path = os.path.abspath(os.path.join(root, "dolphin", "Dolphin.exe"))
-game_path = os.path.join(root, "NSMB.rvz")
+dolphin_path = os.path.abspath(os.path.join(root, "../", "Assignment 3", "Experiment", "dolphin", "Dolphin.exe"))
+game_path = os.path.join(root, "../", "Assignment 3", "Experiment", "dolphin", "rom", "New Super Mario Bros. Wii (Europe) (En,Fr,De,Es,It) (Rev 1).rvz")
 game_save_dir = os.path.join(root, "StateSaves")
-game_save_dir = os.path.join(game_save_dir, "SMNP01.s01")
+game_save_dir = os.path.join(game_save_dir, "SMNP01.s03")
 scripts_dir = os.path.abspath(os.path.join(root, "scripts"))
 online_trainer_path = os.path.join(scripts_dir, "worker.py")
 model_path = os.path.join(root, "scripts")
