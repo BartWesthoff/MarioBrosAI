@@ -1,8 +1,19 @@
 import os
 import sys
+# Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
+
+# Add virtual environment path
+venv_path = os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages')
+if os.path.exists(venv_path):
+    sys.path.append(venv_path)
+    print(f"[WORKER] Added venv path: {venv_path}")
+
+# Print all paths for debugging
+print(f"[WORKER] Python path: {sys.path}")
+print(f"[WORKER] Current directory: {os.getcwd()}")
 
 import time
 import threading
@@ -66,8 +77,8 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-        "jump_left": {"Left": True, "A": True},
-        "jump_right": {"Right": True, "A": True},
+        "jump_left": {"Left": True, "A": True, "B": True},
+        "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
         "none": {}  # release all buttons
@@ -109,9 +120,9 @@ def preprocess_frames_cv2(frames, target_size=(140, 114), save=False):
 
 
     img_arrays = np.stack(img_arrays_list)
-    img_array_width_height = img_arrays.transpose(0, 2, 1) # IMPORTANT: our model expects width height, our images are height width so we need to transpose
+    #img_array_width_height = img_arrays.transpose(0, 2, 1) # IMPORTANT: our model expects width height, our images are height width so we need to transpose
 
-    return img_array_width_height
+    return img_arrays
 
 
 memory_queue = queue.Queue()
@@ -158,18 +169,34 @@ ACTION_KEYS = [
                 "jump_right",
                 "jump_left",
                 "move_right",
-                "move_left", 
+                "move_left",
                 "none"]
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
+class frameList:
+    def __init__(self):
+        self.length = 5
+        self.frames = []
 
+    def __len__(self):
+        return len(self.frames)
+
+    def getFrames(self):
+        return self.frames
+
+    def append(self, frame):
+        if len(self.frames) >= self.length:
+            self.frames.pop(0)
+        self.frames.append(frame)
+
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     print("------------------Starting worker script...--------------------")
     frame_count = 0
-    frames = []
+    frameStorage = frameList()
     rewards = []
     experience_list = [] # experiences (state, action, reward, next_state)
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
@@ -186,36 +213,32 @@ if __name__ == "__main__":
 
     # move past initial frames, to skip initial loading of game
     for i in range(10):
-        (width,height,img_data) = await event.framedrawn()
-    
+        await event.framedrawn()
+
+
     while True:
         print(f"Start loop, frameCount: {frame_count}")
-        
 
-        await event.framedrawn()
+        frameStorage.append(await event.framedrawn())           # frame 0
+        do_action(action)
         print("preSet")
+        await event.frameadvance()
         read_signal.set()
         print("postSet")
-        await event.framedrawn()
+
+        frameStorage.append(await event.framedrawn())           # frame 1
         print("postSetDraw")
         do_action(action)
-        
+
         old_data = data
-        print("data fetch")
+        try:
+            data = memory_queue.get_nowait()
+            print("Data aquired")
+        except queue.Empty:
+            print("\nWARNING: data was not available yet, reusing old data")
 
 
-        for i in range(2):
-            try:
-                data = memory_queue.get_nowait()
-                break
-            except queue.Empty:
-                print(f"[WORKER] No data received yet, retrying ({i+1}/2)...")
-                time.sleep(0.0005)
-                data = old_data
-
-        print("Data aquired")
-
-        (width,height,img_data) = await event.framedrawn()
+        frameStorage.append(await event.framedrawn())           # frame 2
         do_action(action)
         print("Image aquired")
         reward, new_checkpoint_idx = reward, new_checkpoint_idx = compute_reward(
@@ -223,15 +246,18 @@ if __name__ == "__main__":
         previous_x, previous_clock
         )
         print("Reward computed")
-        #await event.framedrawn()
-        frames.append((width, height, img_data))
+        frameStorage.append(await event.framedrawn())           # frame 3
+        do_action(action)
+
+        if len(rewards) == 5:
+            rewards.pop(0)
         rewards.append(reward)
 
         print(f"Rewards: {rewards}\tMean reward: {np.mean(rewards)}")
 
-        if len(frames) == 5:
+        if len(frameStorage) == 5:
             if repeat_counter == 0:
-                preprocess_queue.put((frames.copy(), action, reward))
+                preprocess_queue.put((frameStorage.getFrames(), action, reward))
                 time.sleep(0.01)
                 try:
                     state, action, reward, next_state = processed_queue.get_nowait()
@@ -250,29 +276,25 @@ if __name__ == "__main__":
                         print(f"[WORKER] No action received yet, retrying ({i+1}/3)...")
                         time.sleep(0.05)
                 if action is None:
-                    print("\nWARNING:No action received, defaulting to action 5\n")
+                    print("\nWARNING:No action received, defaulting to action 5: None\n")
                     action = 5
 
                 repeat_counter = action_repeat
 
-            frames.pop(0)
-            rewards.pop(0)
             repeat_counter -= 1
 
-        #action = ACTION_TO_INDEX['jump_right']
-        await event.framedrawn()
+        frameStorage.append(await event.framedrawn())                                # frame 4
         do_action(action)
-        print(f"Post action")
+        #print(f"Post action")
 
         if previous_lives is not None and previous_lives > data['lives']:
             print("-------------------")
             print("Died, resetting state. Reward: ", reward)
             print("-------------------")
             await event.framedrawn()
-            savestate.load_from_slot(1)
+            savestate.load_from_slot(3)
             await event.framedrawn()
-        
-        # draw a second frame to increase fps
+
         previous_lives = data['lives']
         previous_mario_form = data['mario_form']
         previous_checkpoint_idx = new_checkpoint_idx
@@ -280,7 +302,7 @@ if __name__ == "__main__":
         frame_count += 1
         previous_x = data['cur_x']
         previous_clock = data['current_time']
-        
-        await event.framedrawn()
-        do_action(action)
-        print(f"End loop, frameCount: {frame_count}")
+
+        #frameStorage.append(await event.framedrawn())                                # frame 5
+        #do_action(action)
+        #print(f"End loop, frameCount: {frame_count}")
