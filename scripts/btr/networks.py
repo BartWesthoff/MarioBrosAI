@@ -124,9 +124,9 @@ class FactorizedNoisyLinear(nn.Module):
         # y = wx + d, where
         # w = \mu^w + \sigma^w * \epsilon^w
         # b = \mu^b + \sigma^b * \epsilon^b
-        return F.linear(input,
-                        self.weight_mu + self.weight_sigma*self.weight_epsilon,
-                        self.bias_mu + self.bias_sigma*self.bias_epsilon)
+        weight = self.weight_mu + self.weight_sigma * self.weight_epsilon.clone()
+        bias   = self.bias_mu   + self.bias_sigma  * self.bias_epsilon.clone()
+        return F.linear(input, weight, bias)
 
 class NatureIQN(nn.Module):
     """

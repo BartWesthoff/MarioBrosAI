@@ -3,18 +3,15 @@ import sys
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
-
 import time
 import threading
 import pickle
 import socket
 from scripts.utils_func import generate_checkpoints, compute_reward, read_game_memory, is_game_in_state, detect_freeze, agent_action
 import queue
-import torch
 import time
-
 from dolphin import event, gui, memory, controller, savestate
-
+from collections import deque
 import cv2
 import numpy as np
 
@@ -165,19 +162,16 @@ NUM_ACTIONS = len(ACTION_KEYS)
 
 
 class frameList:
-    def __init__(self):
-        self.length = 5
-        self.frames = []
-    
+    def __init__(self, length=5):
+        self.frames = deque(maxlen=length)
+
     def __len__(self):
         return len(self.frames)
-    
+
     def getFrames(self):
-        return self.frames
+        return list(self.frames)
 
     def append(self, frame):
-        if len(self.frames) >= self.length:
-            self.frames.pop(0)
         self.frames.append(frame)
 
 import matplotlib.pyplot as plt
@@ -229,15 +223,20 @@ if __name__ == "__main__":
        
         frameStorage.append(await event.framedrawn())           # frame 2
         do_action(action)
-        print("Image aquired")
+        #print("Image aquired")
+
+        #print("Reward computed")
+        frameStorage.append(await event.framedrawn())           # frame 3
+        do_action(action)
+
+        frameStorage.append(await event.framedrawn())                                # frame 4
+        do_action(action)
+        
         reward, new_checkpoint_idx = reward, new_checkpoint_idx = compute_reward(
         data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
         previous_x, previous_clock
         )
-        print("Reward computed")
-        frameStorage.append(await event.framedrawn())           # frame 3
-        do_action(action)
-        
+
         if len(rewards) == 5:
             rewards.pop(0)
         rewards.append(reward)
@@ -247,7 +246,7 @@ if __name__ == "__main__":
         if len(frameStorage) == 5:
             if repeat_counter == 0:
                 preprocess_queue.put((frameStorage.getFrames(), action, reward))
-                time.sleep(0.01)
+                time.sleep(0.005)
                 try:
                     state, action, reward, next_state = processed_queue.get_nowait()
                     experience = (state, action, reward, next_state)
@@ -272,8 +271,7 @@ if __name__ == "__main__":
 
             repeat_counter -= 1
 
-        frameStorage.append(await event.framedrawn())                                # frame 4
-        do_action(action)
+
         #print(f"Post action")
 
         if previous_lives is not None and previous_lives > data['lives']:
@@ -291,7 +289,3 @@ if __name__ == "__main__":
         frame_count += 1
         previous_x = data['cur_x']
         previous_clock = data['current_time']
-        
-        #frameStorage.append(await event.framedrawn())                                # frame 5
-        #do_action(action)
-        #print(f"End loop, frameCount: {frame_count}")

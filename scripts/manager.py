@@ -5,17 +5,10 @@ import torch
 import pickle
 import time
 import socket
-import random
 import sys
 import traceback
-import torch.nn.functional as F
 import numpy as np
-import cv2
-from collections import deque
-import queue
-from PIL import Image
 from btr.Agent import Agent
-torch.autograd.set_detect_anomaly(True)
 
 # ---- setup ----
 def project_root():
@@ -93,7 +86,7 @@ ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
-num_workers = 1   # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
+num_workers = 1  # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
 experience_buffers = [[] for _ in range(num_workers)]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"[MANAGER] Using device: {device}")
@@ -104,7 +97,7 @@ agent = Agent(
     num_envs=1, # havent tried this with 2, so keep this at 1, even when using multiple workers
     agent_name="online_agent",
     total_frames=300_000, # set too high to avoid too fast epsilon decay
-    max_mem_size=10_000, # maybe too high
+    max_mem_size=5_000, # maybe too high
     imagex=114, # IMPORTANT: This is switched because their memory expects height x width, while the rest is width x height
     imagey=140,
     #eps_steps=10_000,
@@ -162,7 +155,7 @@ def train():
     while True:
         time.sleep(10)
 
-        if agent.memory.size > 0:
+        if agent.memory.size > 3:
             _, states, _, _, next_states, _, _ = agent.memory.sample(3)
 
             for idx, state in enumerate(states):
@@ -178,7 +171,7 @@ def train():
             traceback.print_exc()
             continue
 
-        if agent.grad_steps % save_every == 0:
+        if agent.grad_steps % save_every == 0 and agent.grad_steps > 0:
             print(f"[MANAGER] Saving model at step {agent.grad_steps}...")
             agent.save_model()
             print(f"[MANAGER] Model saved.")
