@@ -72,7 +72,6 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-        "jump_left": {"Left": True, "A": True, "B": True},
         "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
@@ -162,7 +161,6 @@ image_dim = (140, 114)
 ACTION_KEYS = [
                 "sprint_right",
                 "jump_right",
-                "jump_left",
                 "move_right",
                 "move_left",
                 "none"]
@@ -192,7 +190,8 @@ if __name__ == "__main__":
     rewards = []
     experience_list = [] # experiences (state, action, reward, next_state)
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
-    action = 5 # "none", default action for first frames
+    default_action = 'none'
+    action = ACTION_TO_INDEX[default_action]
     data = None
     socket_conn = connect_to_socket()
     threading.Thread(target=threaded_comm, args=(socket_conn,), daemon=True).start()
@@ -266,7 +265,7 @@ if __name__ == "__main__":
                         time.sleep(0.05)
                 if action is None:
                     print("\nWARNING:No action received, defaulting to action 5: None\n")
-                    action = 5
+                    action = ACTION_TO_INDEX['none']
 
                 repeat_counter = action_repeat
 
