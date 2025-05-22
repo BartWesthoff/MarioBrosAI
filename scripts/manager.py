@@ -78,7 +78,6 @@ def handle_worker_connection(worker_id):
 ACTION_KEYS = [
                 "sprint_right",
                 "jump_right",
-                "jump_left",
                 "move_right",
                 "move_left",
                 "none"]
@@ -86,7 +85,7 @@ ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
-num_workers = 1   # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
+num_workers = 1  # multi-worker requires --user and --user_folder in launch_workers and disables logging unless you copy user_dir into worker dir
 experience_buffers = [[] for _ in range(num_workers)]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"[MANAGER] Using device: {device}")
@@ -195,8 +194,8 @@ def train():
 
 
 
-dolphin_path = os.path.abspath(os.path.join(root, "../", "Assignment 3", "Experiment", "dolphin", "Dolphin.exe"))
-game_path = os.path.join(root, "../", "Assignment 3", "Experiment", "dolphin", "rom", "New Super Mario Bros. Wii (Europe) (En,Fr,De,Es,It) (Rev 1).rvz")
+dolphin_path = os.path.abspath(os.path.join(root, "dolphin", "Dolphin.exe"))
+game_path = os.path.join(root, "NSMB.rvz")
 game_save_dir = os.path.join(root, "StateSaves")
 game_save_dir = os.path.join(game_save_dir, "SMNP01.s03")
 scripts_dir = os.path.abspath(os.path.join(root, "scripts"))

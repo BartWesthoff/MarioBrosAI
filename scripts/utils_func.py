@@ -168,7 +168,7 @@ def agent_action(filtered_keys):
         # "crouch": crouch,
         # "airborne": airborne,
         # "sprint_left": sprint_left,
-        "jump_left": jump_left,
+        #"jump_left": jump_left,
         "jump_right": jump_right,
         "sprint_right": sprint_right,
         "move_right": move_right,
