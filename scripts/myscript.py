@@ -9,7 +9,7 @@ from collections import deque
 import json
 from datetime import datetime
 cwd = os.getcwd()
-data_dir = os.path.abspath(os.path.join(cwd , "data"))
+data_dir = os.path.abspath(os.path.join(cwd , "data2"))
 scripts_dir = os.path.abspath(os.path.join(cwd, "scripts"))
 screenshots_dir = os.path.join(data_dir, "screenshots")
 movements_path = os.path.join(data_dir, "movements.json")
@@ -68,6 +68,7 @@ middle_y = (pos_start_screen[1] + pos_end_screen[1]) // 2
 # Level Settings
 checkpoint_width = 100
 level1_start_x = 760
+checkpoint4 = 2500
 level1_last_cp = 6692
 num_checkpoints = 10
 s_cp_box = 10
@@ -117,7 +118,11 @@ def draw_debug_info(data, reward, mean_reward, is_frozen, in_game, death_display
     if death_display_timer > 0:
         gui.draw_text((50, 370), CYAN, "DIED!")
         if is_frozen and is_in_game and data['cur_x'] > level1_start_x and data['termin'] == 1:
-            savestate.load_from_slot(1)
+            savestate.load_from_slot(3)
+    if data['cur_x'] > checkpoint4 and data['termin'] == 1:
+        gui.draw_text((50, 390), CYAN, "Checkpoint 4 reached!")
+        if is_in_game:
+            savestate.load_from_slot(3)
 
 def save_screenshots_and_movements(small_screenshot=False, crop_to_subscreen=False):
     
@@ -219,7 +224,7 @@ while True:
             }
         }
 
-    if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > level1_last_cp+50):
+    if b_is_pressed2.get("Home") or (auto_save and data['cur_x'] > checkpoint4+50):
         save_screenshots_and_movements(small_screenshot=True,crop_to_subscreen=True)
 
 

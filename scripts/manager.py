@@ -15,6 +15,7 @@ from collections import deque
 import queue
 from PIL import Image
 from btr.Agent import Agent
+from utils_func import agent_action
 torch.autograd.set_detect_anomaly(True)
 
 # ---- setup ----
@@ -82,13 +83,7 @@ def handle_worker_connection(worker_id):
 
 
 # ----- CODE FOR MODEL AND TRAINING -----
-ACTION_KEYS = [
-                "sprint_right",
-                "jump_right",
-                "jump_left",
-                "move_right",
-                "move_left", 
-                "none"]
+ACTION_KEYS = list(agent_action({}).keys())
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
