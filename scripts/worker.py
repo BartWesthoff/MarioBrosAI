@@ -72,10 +72,7 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-<<<<<<< HEAD
         "jump_left": {"Left": True, "A": True, "B": True},
-=======
->>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
         "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
