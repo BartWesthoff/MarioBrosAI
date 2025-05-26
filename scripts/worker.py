@@ -1,8 +1,16 @@
 import os
 import sys
+# Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
+
+# Add virtual environment path
+venv_path = os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages')
+if os.path.exists(venv_path):
+    sys.path.append(venv_path)
+    print(f"[WORKER] Added venv path: {venv_path}")
+
 
 import time
 import threading
@@ -10,11 +18,9 @@ import pickle
 import socket
 from scripts.utils_func import generate_checkpoints, compute_reward, read_game_memory, is_game_in_state, detect_freeze, agent_action
 import queue
-import torch
 import time
-
 from dolphin import event, gui, memory, controller, savestate
-
+from collections import deque
 import cv2
 import numpy as np
 
@@ -66,7 +72,10 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
+<<<<<<< HEAD
         "jump_left": {"Left": True, "A": True, "B": True},
+=======
+>>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
         "jump_right": {"Right": True, "A": True, "B": True},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
@@ -156,28 +165,24 @@ image_dim = (140, 114)
 ACTION_KEYS = [
                 "sprint_right",
                 "jump_right",
-                "jump_left",
                 "move_right",
-                "move_left", 
+                "move_left",
                 "none"]
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
 
 class frameList:
-    def __init__(self):
-        self.length = 5
-        self.frames = []
-    
+    def __init__(self, length=5):
+        self.frames = deque(maxlen=length)
+
     def __len__(self):
         return len(self.frames)
-    
+
     def getFrames(self):
-        return self.frames
+        return list(self.frames)
 
     def append(self, frame):
-        if len(self.frames) >= self.length:
-            self.frames.pop(0)
         self.frames.append(frame)
 
 import matplotlib.pyplot as plt
@@ -189,7 +194,8 @@ if __name__ == "__main__":
     rewards = []
     experience_list = [] # experiences (state, action, reward, next_state)
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
-    action = 5 # "none", default action for first frames
+    default_action = 'none'
+    action = ACTION_TO_INDEX[default_action]
     data = None
     socket_conn = connect_to_socket()
     threading.Thread(target=threaded_comm, args=(socket_conn,), daemon=True).start()
@@ -203,22 +209,18 @@ if __name__ == "__main__":
     # move past initial frames, to skip initial loading of game
     for i in range(10):
         await event.framedrawn()
-        
-    
+
     while True:
         print(f"Start loop, frameCount: {frame_count}")
-        
+
         frameStorage.append(await event.framedrawn())           # frame 0
         do_action(action)
-        print("preSet")
         await event.frameadvance()
         read_signal.set()
-        print("postSet")
 
         frameStorage.append(await event.framedrawn())           # frame 1
-        print("postSetDraw")
         do_action(action)
-        
+
         old_data = data
         try:
             data = memory_queue.get_nowait()
@@ -226,18 +228,19 @@ if __name__ == "__main__":
         except queue.Empty:
             print("\nWARNING: data was not available yet, reusing old data")
 
-       
         frameStorage.append(await event.framedrawn())           # frame 2
         do_action(action)
-        print("Image aquired")
+
+        frameStorage.append(await event.framedrawn())           # frame 3
+        do_action(action)
+
+        frameStorage.append(await event.framedrawn())                                # frame 4
+        do_action(action)
+        
         reward, new_checkpoint_idx = reward, new_checkpoint_idx = compute_reward(
         data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
         previous_x, previous_clock
         )
-        print("Reward computed")
-        frameStorage.append(await event.framedrawn())           # frame 3
-        do_action(action)
-        
         if len(rewards) == 5:
             rewards.pop(0)
         rewards.append(reward)
@@ -247,7 +250,7 @@ if __name__ == "__main__":
         if len(frameStorage) == 5:
             if repeat_counter == 0:
                 preprocess_queue.put((frameStorage.getFrames(), action, reward))
-                time.sleep(0.01)
+                time.sleep(0.005)
                 try:
                     state, action, reward, next_state = processed_queue.get_nowait()
                     experience = (state, action, reward, next_state)
@@ -266,15 +269,11 @@ if __name__ == "__main__":
                         time.sleep(0.05)
                 if action is None:
                     print("\nWARNING:No action received, defaulting to action 5: None\n")
-                    action = 5
+                    action = ACTION_TO_INDEX['none']
 
                 repeat_counter = action_repeat
 
             repeat_counter -= 1
-
-        frameStorage.append(await event.framedrawn())                                # frame 4
-        do_action(action)
-        #print(f"Post action")
 
         if previous_lives is not None and previous_lives > data['lives']:
             print("-------------------")
@@ -291,7 +290,3 @@ if __name__ == "__main__":
         frame_count += 1
         previous_x = data['cur_x']
         previous_clock = data['current_time']
-        
-        #frameStorage.append(await event.framedrawn())                                # frame 5
-        #do_action(action)
-        #print(f"End loop, frameCount: {frame_count}")

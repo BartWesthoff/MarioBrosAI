@@ -1,7 +1,14 @@
 import sys
 import os
+# Original path
 user = os.getlogin()
 sys.path.append(f"C:\\Users\\{user}\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages")
+
+# Add virtual environment path
+venv_path = os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages')
+if os.path.exists(venv_path):
+    sys.path.append(venv_path)
+    print(f"[UTILS] Added venv path: {venv_path}")
 import pygetwindow as gw
 # Define colors
 RED = 0xffff0000
@@ -127,7 +134,7 @@ def read_game_memory():
     }
 
 def is_game_in_state(data):
-    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700 
+    return data['cur_x'] != 0.0 and data['cur_y'] != 0.0 and data['current_time'] > 0 and data['cur_x'] < 6700
 
 def detect_freeze(freeze_threshold, current_time, previous_time, frozen_frame_count, termin, cur_x, cur_y):
     if previous_time is not None and current_time == previous_time:
@@ -153,15 +160,25 @@ def agent_action(filtered_keys):
 
     remove_some = True
     if remove_some:
+<<<<<<< HEAD
         if any([crouch, airborne, sprint_left, jump,jump_left]) and not any([move_right, move_left]):
             stand_still = True
             crouch = airborne = sprint_left = jump = jump_left = False
+=======
+        if any([crouch, airborne, sprint_left, jump]) and not any([move_right, move_left]):
+            stand_still = True
+            crouch = airborne = sprint_left = jump = False
+>>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
     return {
         # "jump": jump,
         # "crouch": crouch,
         # "airborne": airborne,
         # "sprint_left": sprint_left,
+<<<<<<< HEAD
         # "jump_left": jump_left,
+=======
+        #"jump_left": jump_left,
+>>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
         "jump_right": jump_right,
         "sprint_right": sprint_right,
         "move_right": move_right,
