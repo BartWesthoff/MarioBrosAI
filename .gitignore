@@ -10,10 +10,12 @@ __pycache__/
 *.so
 
 # user-specific stuff
-data/*
+data*
 dolphin/*
 *.bat
 *.png
+DolphinUser*
+*.rvz
 # Distribution / packaging
 .Python
 venv/

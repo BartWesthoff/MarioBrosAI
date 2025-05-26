@@ -1,5 +1,7 @@
 import os
 import sys
+from utils_func import agent_action
+# Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
@@ -174,12 +176,7 @@ image_dim = (140, 114)
 
 
 # action mappings
-ACTION_KEYS = [
-                "sprint_right",
-                "jump_right",
-                "move_right",
-                "move_left",
-                "none"]
+ACTION_KEYS = list(agent_action({}).keys())
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 

@@ -11,6 +11,7 @@ import traceback
 import numpy as np
 from threading import Lock
 from btr.Agent import Agent
+from utils_func import agent_action
 
 
 memory_lock = Lock()
@@ -103,12 +104,7 @@ def handle_worker_connection(worker_id):
 
 
 # ----- CODE FOR MODEL AND TRAINING -----
-ACTION_KEYS = [
-                "sprint_right",
-                "jump_right",
-                "move_right",
-                "move_left",
-                "none"]
+ACTION_KEYS = list(agent_action({}).keys())
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 

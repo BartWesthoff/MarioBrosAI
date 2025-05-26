@@ -348,7 +348,7 @@ class Agent:
                 self.learn_call()
 
     def learn_call(self):
-        print("entered learn call")
+        # print("entered learn call")
         if self.env_steps < self.min_sampling_size:
             print(f"Not enough samples in memory: {self.env_steps} < {self.min_sampling_size}")
             return
@@ -364,7 +364,7 @@ class Agent:
             self.replace_target_network()
 
         idxs, states, actions, rewards, next_states, dones, weights = self.memory.sample(self.batch_size)
-        print("Sample taken")
+        # print("Sample taken")
         self.optimizer.zero_grad()
 
         # use this code to check your states are correct
@@ -546,7 +546,7 @@ class Agent:
             loss = loss.mean()
 
         elif self.iqn and self.munchausen:
-            print("Using IQN with munchausen")
+            # print("Using IQN with munchausen")
             with torch.no_grad():
                 Q_targets_next, _ = self.tgt_net(next_states)
 
