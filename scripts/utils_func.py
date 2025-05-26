@@ -160,25 +160,15 @@ def agent_action(filtered_keys):
 
     remove_some = True
     if remove_some:
-<<<<<<< HEAD
-        if any([crouch, airborne, sprint_left, jump,jump_left]) and not any([move_right, move_left]):
-            stand_still = True
-            crouch = airborne = sprint_left = jump = jump_left = False
-=======
         if any([crouch, airborne, sprint_left, jump]) and not any([move_right, move_left]):
             stand_still = True
             crouch = airborne = sprint_left = jump = False
->>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
     return {
         # "jump": jump,
         # "crouch": crouch,
         # "airborne": airborne,
         # "sprint_left": sprint_left,
-<<<<<<< HEAD
-        # "jump_left": jump_left,
-=======
         #"jump_left": jump_left,
->>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
         "jump_right": jump_right,
         "sprint_right": sprint_right,
         "move_right": move_right,

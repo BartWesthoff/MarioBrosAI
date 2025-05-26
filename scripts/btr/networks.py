@@ -124,9 +124,9 @@ class FactorizedNoisyLinear(nn.Module):
         # y = wx + d, where
         # w = \mu^w + \sigma^w * \epsilon^w
         # b = \mu^b + \sigma^b * \epsilon^b
-        return F.linear(input,
-                        self.weight_mu + self.weight_sigma*self.weight_epsilon,
-                        self.bias_mu + self.bias_sigma*self.bias_epsilon)
+        weight = self.weight_mu + self.weight_sigma * self.weight_epsilon.clone()
+        bias   = self.bias_mu   + self.bias_sigma  * self.bias_epsilon.clone()
+        return F.linear(input, weight, bias)
 
 class NatureIQN(nn.Module):
     """
@@ -382,294 +382,188 @@ class ImpalaCNNBlock(nn.Module):
 
         return x
 
-# Keep compatibility with existing Impala block structure and coding style
-class ImpoolaCNNResidual(nn.Module):
+
+class ImpalaCNNLarge(nn.Module):
     """
-    Simple residual block for Impoola, identical to Impala.
+    Implementation of the large variant of the IMPALA CNN introduced in Espeholt et al. (2018).
+    No IQN or C51
     """
-    def __init__(self, depth, norm_func, activation=nn.ReLU):
+    def __init__(self, in_depth, actions, model_size=2, spectral=True, noisy=False, maxpool=True, maxpool_size=6,
+                 device='cuda:0', linear_size=512):
         super().__init__()
-        self.activation = activation()
-        self.conv_0 = norm_func(nn.Conv2d(in_channels=depth, out_channels=depth, kernel_size=3, stride=1, padding=1))
-        self.conv_1 = norm_func(nn.Conv2d(in_channels=depth, out_channels=depth, kernel_size=3, stride=1, padding=1))
 
-    def forward(self, x):
-        x_ = self.conv_0(self.activation(x))
-        x_ = self.conv_1(self.activation(x_))
-        return x + x_
-
-class ImpoolaCNNBlock(nn.Module):
-    """
-    Conv block for Impoola, as in Impala but output shape is preserved for GAP.
-    """
-    def __init__(self, depth_in, depth_out, norm_func, activation=nn.ReLU):
-        super().__init__()
-        self.conv = nn.Conv2d(in_channels=depth_in, out_channels=depth_out, kernel_size=3, stride=1, padding=1)
-        self.max_pool = nn.MaxPool2d(3, 2, padding=1)
-        self.residual_0 = ImpoolaCNNResidual(depth_out, norm_func, activation=activation)
-        self.residual_1 = ImpoolaCNNResidual(depth_out, norm_func, activation=activation)
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.max_pool(x)
-        x = self.residual_0(x)
-        x = self.residual_1(x)
-        return x
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import time
-
-class ImpalaBaseCNN(nn.Module):
-    """
-    Base class for IMPALA/Impoola Dueling CNNs.
-    Handles conv layers, pooling/GAP, dueling head, noisy/spectral setup, checkpointing.
-    """
-    def __init__(self, 
-                 in_depth, 
-                 actions, 
-                 model_size=2, 
-                 spectral=True, 
-                 noisy=False, 
-                 maxpool=True, 
-                 maxpool_size=6,
-                 device='cuda:0', 
-                 linear_size=512, 
-                 block_class=None, 
-                 use_gap=False):
-        super().__init__()
+        self.start = time.time()
         self.model_size = model_size
         self.actions = actions
         self.maxpool = maxpool
         self.maxpool_size = maxpool_size
         self.device = device
         self.linear_size = linear_size
-        self.use_gap = use_gap
 
-        # Block selection
-        if block_class is None:
-            raise ValueError("block_class (ImpalaCNNBlock or ImpoolaCNNBlock) required.")
+        if noisy:
+            linear_layer = FactorizedNoisyLinear
+        else:
+            linear_layer = nn.Linear
 
-        # Spectral norm
         def identity(p): return p
+
         norm_func = torch.nn.utils.spectral_norm if spectral else identity
 
-        # Noisy
-        linear_layer = FactorizedNoisyLinear if noisy else nn.Linear
-
-        # Feature extractor
         self.main = nn.Sequential(
-            block_class(in_depth, 16*model_size, norm_func=norm_func),
-            block_class(16*model_size, 32*model_size, norm_func=norm_func),
-            block_class(32*model_size, 32*model_size, norm_func=norm_func),
+            ImpalaCNNBlock(in_depth, 16*model_size, norm_func=norm_func),
+            ImpalaCNNBlock(16*model_size, 32*model_size, norm_func=norm_func),
+            ImpalaCNNBlock(32*model_size, 32*model_size, norm_func=norm_func),
             nn.ReLU()
         )
 
-        if use_gap:
-            self.gap = nn.AdaptiveAvgPool2d((1, 1))
-            self.linear = linear_layer(32 * model_size, self.linear_size)
-            dueling_in = self.linear_size
-        else:
-            if self.maxpool:
-                self.pool = nn.AdaptiveMaxPool2d((self.maxpool_size, self.maxpool_size))
-                if self.maxpool_size == 8:
-                    self.conv_out_size = 2048*model_size
-                elif self.maxpool_size == 6:
-                    self.conv_out_size = 1152*model_size
-                elif self.maxpool_size == 4:
-                    self.conv_out_size = 512*model_size
-                else:
-                    raise Exception("No Conv out size for this maxpool size")
+        if self.maxpool:
+            self.pool = torch.nn.AdaptiveMaxPool2d((self.maxpool_size, self.maxpool_size))
+            if self.maxpool_size == 8:
+                self.conv_out_size = 2048*model_size
+            elif self.maxpool_size == 6:
+                self.conv_out_size = 1152*model_size
+            elif self.maxpool_size == 4:
+                self.conv_out_size = 512*model_size
             else:
-                self.conv_out_size = 32 * model_size * 11 * 11
-            dueling_in = self.conv_out_size
+                raise Exception("No Conv out size for this maxpool size")
+        else:
+            self.conv_out_size = 32 * model_size * 11 * 11
 
         self.dueling = Dueling(
-            nn.Sequential(
-                linear_layer(dueling_in, self.linear_size),
-                nn.ReLU(),
-                linear_layer(self.linear_size, 1)
-            ),
-            nn.Sequential(
-                linear_layer(dueling_in, self.linear_size),
-                nn.ReLU(),
-                linear_layer(self.linear_size, actions)
-            )
+            nn.Sequential(linear_layer(self.conv_out_size, self.linear_size),
+                          nn.ReLU(),
+                          linear_layer(self.linear_size, 1)),
+            nn.Sequential(linear_layer(self.conv_out_size, self.linear_size),
+                          nn.ReLU(),
+                          linear_layer(self.linear_size, actions))
         )
 
         self.to(device)
 
     def _get_conv_out(self, shape):
         o = self.main(torch.zeros(1, *shape))
-        if self.use_gap:
-            o = self.gap(o)
-            o = o.view(o.size(0), -1)
-        elif self.maxpool:
-            o = self.pool(o)
         return int(np.prod(o.size()))
 
     def qvals(self, x, advantages_only=False):
         return self.forward(x, advantages_only)
 
     def forward(self, x, advantages_only=False):
-        raise NotImplementedError("Implement in child class!")
+        """if test:
+            save_image(x[0], 'img1.png')
+            save_image(x[1], 'img2.png')
+            save_image(x[2], 'img3.png')
 
-    def save_checkpoint(self, name):
-        torch.save(self.state_dict(), name + ".model")
-
-    def load_checkpoint(self, name):
-        self.load_state_dict(torch.load(name))
-
-
-class ImpalaCNNLarge(ImpalaBaseCNN):
-    """
-    IMPALA-CNN Large with (optional) maxpool before dueling head (no GAP).
-    """
-    def __init__(self, in_depth, actions, model_size=2, spectral=True, noisy=False, maxpool=True, maxpool_size=6,
-                 device='cuda:0', linear_size=512):
-        super().__init__(
-            in_depth=in_depth,
-            actions=actions,
-            model_size=model_size,
-            spectral=spectral,
-            noisy=noisy,
-            maxpool=maxpool,
-            maxpool_size=maxpool_size,
-            device=device,
-            linear_size=linear_size,
-            block_class=ImpalaCNNBlock,
-            use_gap=False
-        )
-
-    def forward(self, x, advantages_only=False):
+            raise Exception("stop")"""
         x = x.float() / 255
         f = self.main(x)
         if self.maxpool:
             f = self.pool(f)
-        # flatten for dueling head
-        f = f.view(f.size(0), -1)
+
         return self.dueling(f, advantages_only=advantages_only)
 
+    def save_checkpoint(self, name):
+        #print('... saving checkpoint ...')
+        torch.save(self.state_dict(), name + ".model")
 
-class ImpoolaCNNLarge(ImpalaBaseCNN):
+    def load_checkpoint(self, name):
+        #print('... loading checkpoint ...')
+        self.load_state_dict(torch.load(name))
+
+
+class ImpalaCNNLargeC51(nn.Module):
     """
-    IMPOOLA-CNN Large with GAP + Linear before dueling head.
-    """
-    def __init__(self, in_depth, actions, model_size=2, spectral=True, noisy=False, maxpool=True, maxpool_size=6,
-                 device='cuda:0', linear_size=512):
-        super().__init__(
-            in_depth=in_depth,
-            actions=actions,
-            model_size=model_size,
-            spectral=spectral,
-            noisy=noisy,
-            maxpool=maxpool,
-            maxpool_size=maxpool_size,
-            device=device,
-            linear_size=linear_size,
-            block_class=ImpoolaCNNBlock,
-            use_gap=True
-        )
-
-    def forward(self, x, advantages_only=False):
-        x = x.float() / 255
-        f = self.main(x)
-        f = self.gap(f)
-        f = f.view(f.size(0), -1)
-        f = self.linear(f)
-        return self.dueling(f, advantages_only=advantages_only)
-
-
-class ImpalaBaseC51(nn.Module):
-    """
-    Base class for C51-based IMPALA/Impoola CNNs (shared logic).
+    Implementation of the large variant of the IMPALA CNN introduced in Espeholt et al. (2018).
+    No IQN
     """
     def __init__(self, in_depth, actions, model_size=2, spectral=True, atoms=51, Vmin=-10, Vmax=10, device='cuda:0',
-                 noisy=False, linear_size=512, block_class=None, use_gap=False):
+                 noisy=False, maxpool=False, linear_size=512):
         super().__init__()
+
         self.start = time.time()
         self.model_size = model_size
         self.actions = actions
         self.atoms = atoms
         self.device = device
         self.noisy = noisy
+        self.maxpool = maxpool
         self.linear_size = linear_size
-        self.use_gap = use_gap
-
-        DELTA_Z = (Vmax - Vmin) / (atoms - 1)
-        self.DELTA_Z = DELTA_Z
 
         if spectral:
             spectral_norm = 'all'
         else:
             spectral_norm = 'none'
 
-        def identity(p): return p
-        norm_func = torch.nn.utils.spectral_norm if (spectral_norm == 'all') else identity
-        norm_func_last = torch.nn.utils.spectral_norm if (spectral_norm in ['last', 'all']) else identity
+        DELTA_Z = (Vmax - Vmin) / (atoms - 1)
 
-        # Feature extractor
-        if block_class is None:
-            raise ValueError("Provide block_class=ImpalaCNNBlock or block_class=ImpoolaCNNBlock")
+        def identity(p): return p
+
+        norm_func = torch.nn.utils.spectral_norm if (spectral_norm == 'all') else identity
+        norm_func_last = torch.nn.utils.spectral_norm if (spectral_norm == 'last' or spectral_norm == 'all') else identity
+
         self.conv = nn.Sequential(
-            block_class(in_depth, 16*model_size, norm_func=norm_func),
-            block_class(16*model_size, 32*model_size, norm_func=norm_func),
-            block_class(32*model_size, 32*model_size, norm_func=norm_func_last),
+            ImpalaCNNBlock(in_depth, 16*model_size, norm_func=norm_func),
+            ImpalaCNNBlock(16*model_size, 32*model_size, norm_func=norm_func),
+            ImpalaCNNBlock(32*model_size, 32*model_size, norm_func=norm_func_last),
             nn.ReLU()
         )
 
-        if self.use_gap:
-            self.gap = nn.AdaptiveAvgPool2d((1, 1))
-            conv_out_size = 32 * model_size
+        if self.maxpool:
+            self.pool = torch.nn.AdaptiveMaxPool2d((6, 6))
+            conv_out_size = 2048*model_size
         else:
-            self.pool = nn.AdaptiveMaxPool2d((6, 6))
-            conv_out_size = 2048 * model_size if hasattr(self, "maxpool") and self.maxpool else 7744
+            conv_out_size = 7744
 
-        # Dueling head, noisy linear optional
-        linear = NoisyLinear if noisy else nn.Linear
-        self.fc1V = linear(conv_out_size, linear_size)
-        self.fc1A = linear(conv_out_size, linear_size)
-        self.fcV2 = linear(linear_size, atoms)
-        self.fcA2 = linear(linear_size, actions * atoms)
+        if not self.noisy:
+            self.fc1V = nn.Linear(conv_out_size, linear_size)
+            self.fc1A = nn.Linear(conv_out_size, linear_size)
+            self.fcV2 = nn.Linear(linear_size, self.atoms)
+            self.fcA2 = nn.Linear(linear_size, actions * self.atoms)
+        else:
+            self.fc1V = NoisyLinear(conv_out_size, linear_size)
+            self.fc1A = NoisyLinear(conv_out_size, linear_size)
+            self.fcV2 = NoisyLinear(linear_size, self.atoms)
+            self.fcA2 = NoisyLinear(linear_size, actions * self.atoms)
 
         self.register_buffer("supports", torch.arange(Vmin, Vmax+DELTA_Z, DELTA_Z))
         self.softmax = nn.Softmax(dim=1)
+
         self.to(device)
 
     def reset_noise(self):
         for name, module in self.named_children():
-            if 'fc' in name and hasattr(module, 'reset_noise'):
+            if 'fc' in name:
                 module.reset_noise()
 
     def _get_conv_out(self, shape):
         o = self.conv(torch.zeros(1, *shape))
-        if self.use_gap:
-            o = self.gap(o)
-        elif hasattr(self, 'maxpool') and self.maxpool:
-            o = self.pool(o)
         return int(np.prod(o.size()))
 
     def fc_val(self, x):
         x = F.relu(self.fc1V(x))
-        return self.fcV2(x)
+        x = self.fcV2(x)
+
+        return x
 
     def fc_adv(self, x):
         x = F.relu(self.fc1A(x))
-        return self.fcA2(x)
+        x = self.fcA2(x)
+
+        return x
 
     def forward(self, x):
-        batch_size = x.size(0)
+        batch_size = x.size()[0]
         fx = x.float() / 255
         conv_out = self.conv(fx)
-        if self.use_gap:
-            conv_out = self.gap(conv_out)
-        elif hasattr(self, 'maxpool') and self.maxpool:
+        if self.maxpool:
             conv_out = self.pool(conv_out)
+
         conv_out = conv_out.view(batch_size, -1)
+
         val_out = self.fc_val(conv_out).view(batch_size, 1, self.atoms)
         adv_out = self.fc_adv(conv_out).view(batch_size, -1, self.atoms)
         adv_mean = adv_out.mean(dim=1, keepdim=True)
         return val_out + (adv_out - adv_mean)
+
 
     def both(self, x):
         cat_out = self(x)
@@ -685,77 +579,24 @@ class ImpalaBaseC51(nn.Module):
         return self.softmax(t.view(-1, self.atoms)).view(t.size())
 
     def save_checkpoint(self, name):
+        #print('... saving checkpoint ...')
         torch.save(self.state_dict(), name + ".model")
 
     def load_checkpoint(self, name):
+        #print('... loading checkpoint ...')
         self.load_state_dict(torch.load(name))
 
 
-class ImpalaCNNLargeC51(ImpalaBaseC51):
+class ImpalaCNNLargeIQN(nn.Module):
     """
-    IMPALA block with flatten/maxpool for C51.
-    """
-    def __init__(self, in_depth, actions, model_size=2, spectral=True, atoms=51, Vmin=-10, Vmax=10, device='cuda:0',
-                 noisy=False, maxpool=False, linear_size=512):
-        super().__init__(
-            in_depth=in_depth,
-            actions=actions,
-            model_size=model_size,
-            spectral=spectral,
-            atoms=atoms,
-            Vmin=Vmin,
-            Vmax=Vmax,
-            device=device,
-            noisy=noisy,
-            linear_size=linear_size,
-            block_class=ImpalaCNNBlock,
-            use_gap=False
-        )
-        self.maxpool = maxpool  # only used for flatten variant
-
-
-class ImpoolaCNNLargeC51(ImpalaBaseC51):
-    """
-    Impoola block with GAP for C51.
-    """
-    def __init__(self, in_depth, actions, model_size=2, spectral=True, atoms=51, Vmin=-10, Vmax=10, device='cuda:0',
-                 noisy=False, linear_size=512):
-        super().__init__(
-            in_depth=in_depth,
-            actions=actions,
-            model_size=model_size,
-            spectral=spectral,
-            atoms=atoms,
-            Vmin=Vmin,
-            Vmax=Vmax,
-            device=device,
-            noisy=noisy,
-            linear_size=linear_size,
-            block_class=ImpoolaCNNBlock,
-            use_gap=True
-        )
-
-
-# Refactored IMPALA IQN Models: Base, IMPALA, Impoola
-import torch
-import torch.nn as nn
-import numpy as np
-import time
-
-class ImpalaBaseIQN(nn.Module):
-    """
-    Base class for IQN-based CNNs (IMPALA/Impoola variants).
-    Handles all shared logic: init, forward, cos, checkpointing, etc.
+    Implementation of the large variant of the IMPALA CNN introduced in Espeholt et al. (2018).
     """
     def __init__(self, in_depth, actions, model_size=2, spectral=True, device='cuda:0',
                  noisy=False, maxpool=False, num_tau=8, maxpool_size=6, dueling=True,
                  linear_size=512, ncos=64, arch="impala", layer_norm=False,
-                 activation="relu",
-                 block_class=None, # Block for feature extractor
-                 use_gap=False,    # If True, use GAP instead of flatten
-                 block_kwargs=None # Extra kwargs for block
-                ):
+                 activation="relu"):
         super().__init__()
+
         self.start = time.time()
         self.model_size = model_size
         self.actions = actions
@@ -764,67 +605,66 @@ class ImpalaBaseIQN(nn.Module):
         self.maxpool = maxpool
         self.dueling = dueling
         self.in_depth = in_depth
+
         self.activation = activation
+        conv_activation = nn.ReLU
+
+
         self.linear_size = linear_size
         self.num_tau = num_tau
+
         self.maxpool_size = maxpool_size
+
         self.layer_norm = layer_norm
+
         self.n_cos = ncos
-        self.arch = arch
-        self.use_gap = use_gap
-        self.block_kwargs = block_kwargs or {}
-
-        # Activation
-        if activation == "relu":
-            conv_activation = nn.ReLU
-        elif activation == "elu":
-            conv_activation = nn.ELU
-        else:
-            conv_activation = nn.ReLU  # fallback
-
         self.pis = torch.FloatTensor([np.pi * i for i in range(self.n_cos)]).view(1, 1, self.n_cos).to(device)
+        self.arch = arch
 
-        # Linear layer choice
         if noisy:
             linear_layer = FactorizedNoisyLinear
         else:
             linear_layer = nn.Linear
 
         def identity(p): return p
-        norm_func = torch.nn.utils.parametrizations.spectral_norm if spectral else identity
 
-        # CNN feature extractor
-        if block_class is None:
-            raise ValueError("You must provide block_class (ImpalaCNNBlock or ImpoolaCNNBlock)")
-        self.conv = nn.Sequential(
-            block_class(in_depth, int(16*model_size), norm_func=norm_func, activation=conv_activation, **self.block_kwargs),
-            block_class(int(16*model_size), int(32*model_size), norm_func=norm_func, activation=conv_activation, **self.block_kwargs),
-            block_class(int(32*model_size), int(32*model_size), norm_func=norm_func, activation=conv_activation, **self.block_kwargs),
-            nn.ReLU()
-        )
-
-        if use_gap:
-            self.gap = nn.AdaptiveAvgPool2d((1, 1))
-            self.conv_out_size = int(32 * model_size)
-        elif self.maxpool:
-            self.pool = torch.nn.AdaptiveMaxPool2d((self.maxpool_size, self.maxpool_size))
-            if self.maxpool_size == 8:
-                self.conv_out_size = 2048 * model_size
-            elif self.maxpool_size == 6:
-                self.conv_out_size = int(1152 * model_size)
-            elif self.maxpool_size == 4:
-                self.conv_out_size = 512 * model_size
-            else:
-                raise Exception("No Conv out size for this maxpool size")
+        if spectral:
+            norm_func = torch.nn.utils.parametrizations.spectral_norm
         else:
-            self.conv_out_size = int(32 * model_size * 11 * 11)
+            norm_func = identity
+
+
+        self.conv = nn.Sequential(
+              ImpalaCNNBlock(in_depth, int(16*model_size), norm_func=norm_func, activation=conv_activation,
+                             layer_norm=self.layer_norm,
+                             layer_norm_shapes=([int(16*model_size), 84, 84], [int(16*model_size), 42, 42])),
+              ImpalaCNNBlock(int(16*model_size), int(32*model_size), norm_func=norm_func, activation=conv_activation,
+                              layer_norm=self.layer_norm,
+                             layer_norm_shapes=([int(32*model_size), 42, 42], [int(32*model_size), 21, 21])),
+              ImpalaCNNBlock(int(32*model_size), int(32*model_size), norm_func=norm_func, activation=conv_activation,
+                              layer_norm=self.layer_norm,
+                             layer_norm_shapes=([int(32*model_size), 21, 21], [int(32*model_size), 11, 11])),
+              nn.ReLU()
+          )
+
+        if self.maxpool:
+              self.pool = torch.nn.AdaptiveMaxPool2d((self.maxpool_size, self.maxpool_size))
+              if self.maxpool_size == 8:
+                  self.conv_out_size = 2048 * model_size
+              elif self.maxpool_size == 6:
+                  self.conv_out_size = int(1152 * model_size)
+              elif self.maxpool_size == 4:
+                  self.conv_out_size = 512 * model_size
+              else:
+                  raise Exception("No Conv out size for this maxpool size")
+        else:
+              self.conv_out_size = int(32 * model_size * 11 * 11)
 
         self.cos_embedding = nn.Linear(self.n_cos, self.conv_out_size)
 
-        # Dueling or regular linear
-        if dueling:
+        if self.dueling:
             if not self.layer_norm:
-                self.dueling_head = Dueling(
+                self.dueling = Dueling(
                     nn.Sequential(linear_layer(self.conv_out_size, self.linear_size),
                                   conv_activation(),
                                   linear_layer(self.linear_size, 1)),
@@ -833,7 +673,9 @@ class ImpalaBaseIQN(nn.Module):
                                   linear_layer(self.linear_size, actions))
                 )
             else:
-                self.dueling_head = Dueling(
+                # torch.nn.utils.parametrizations.spectral_norm
+
+                self.dueling = Dueling(
                     nn.Sequential(linear_layer(self.conv_out_size, self.linear_size),
                                   nn.LayerNorm(self.linear_size),
                                   conv_activation(),
@@ -845,81 +687,78 @@ class ImpalaBaseIQN(nn.Module):
                 )
         else:
             self.linear_layers = nn.Sequential(
-                linear_layer(self.conv_out_size, self.linear_size),
-                conv_activation(),
-                linear_layer(self.linear_size, actions)
-            )
+                    linear_layer(self.conv_out_size, self.linear_size),
+                    conv_activation(),
+                    linear_layer(self.linear_size, actions))
+
         self.to(device)
 
     def _get_conv_out(self, shape):
         o = self.conv(torch.zeros(1, *shape))
-        if self.use_gap:
-            o = self.gap(o)
-        elif self.maxpool:
-            o = self.pool(o)
         return int(np.prod(o.size()))
 
+    #@torch.autocast('cuda')
     def forward(self, inputt, advantages_only=False):
-        batch_size = inputt.size(0)
+        """
+        Quantile Calculation depending on the number of tau
+
+        Return:
+        quantiles [ shape of (batch_size, num_tau, action_size)]
+        taus [shape of ((batch_size, num_tau, 1))]
+
+        """
+        batch_size = inputt.size()[0]
         if self.arch == "each_frame":
             inputt = inputt.reshape((-1, 1, 84, 84))
+
+        #print("Forward Func")
         inputt = inputt.float() / 255
+        #print(input.abs().sum().item())
+
         x = self.conv(inputt)
-        if self.use_gap:
-            x = self.gap(x)
-        elif self.maxpool and (self.arch in ["impala", "each_frame", "3d"]):
+        #print(x.device)
+        if self.maxpool and (self.arch == "impala" or self.arch == "each_frame" or self.arch == "3d"):
             x = self.pool(x)
+
+        #print(x.device)
         x = x.view(batch_size, -1)
-        cos, taus = self.calc_cos(batch_size, self.num_tau)
+
+        cos, taus = self.calc_cos(batch_size, self.num_tau)  # cos shape (batch, num_tau, layer_size)
         cos = cos.view(batch_size * self.num_tau, self.n_cos)
-        cos_x = torch.relu(self.cos_embedding(cos)).view(batch_size, self.num_tau, self.conv_out_size)
+        cos_x = torch.relu(self.cos_embedding(cos)).view(batch_size, self.num_tau, self.conv_out_size)  # (batch, n_tau, layer)
+
+        # x has shape (batch, layer_size) for multiplication –> reshape to (batch, 1, layer)
         x = (x.unsqueeze(1) * cos_x).view(batch_size * self.num_tau, self.conv_out_size)
+
         if self.dueling:
-            out = self.dueling_head(x, advantages_only=advantages_only)
+            out = self.dueling(x, advantages_only=advantages_only)
         else:
             out = self.linear_layers(x)
+
+        #print(out.device)
         return out.view(batch_size, self.num_tau, self.actions), taus
 
     def qvals(self, inputs, advantages_only=False):
         quantiles, _ = self.forward(inputs, advantages_only)
+
         actions = quantiles.mean(dim=1)
+
         return actions
 
     def calc_cos(self, batch_size, n_tau=8):
-        taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1)
+        """
+        Calculating the cosinus values depending on the number of tau samples
+        """
+        taus = torch.rand(batch_size, n_tau).to(self.device).unsqueeze(-1) #(batch_size, n_tau, 1)
         cos = torch.cos(taus*self.pis)
+
+        #assert cos.shape == (batch_size, n_tau, self.n_cos), "cos shape is incorrect"
         return cos, taus
 
     def save_checkpoint(self, name):
+        #print('... saving checkpoint ...')
         torch.save(self.state_dict(), name + ".model")
 
     def load_checkpoint(self, name):
+        #print('... loading checkpoint ...')
         self.load_state_dict(torch.load(name))
-
-class ImpalaCNNLargeIQN(ImpalaBaseIQN):
-    def __init__(self, in_depth, actions, **kwargs):
-        block_kwargs = dict(layer_norm=kwargs.get('layer_norm', False),
-                            layer_norm_shapes=[
-                                [int(16*kwargs.get('model_size', 2)), 84, 84],
-                                [int(16*kwargs.get('model_size', 2)), 42, 42],
-                                [int(32*kwargs.get('model_size', 2)), 42, 42],
-                                [int(32*kwargs.get('model_size', 2)), 21, 21],
-                                [int(32*kwargs.get('model_size', 2)), 21, 21],
-                                [int(32*kwargs.get('model_size', 2)), 11, 11],
-                            ])
-        super().__init__(
-            in_depth, actions,
-            block_class=ImpalaCNNBlock,
-            use_gap=False,
-            block_kwargs=block_kwargs,
-            **kwargs
-        )
-
-class ImpoolaCNNLargeIQN(ImpalaBaseIQN):
-    def __init__(self, in_depth, actions, **kwargs):
-        super().__init__(
-            in_depth, actions,
-            block_class=ImpoolaCNNBlock,
-            use_gap=True,
-            **kwargs
-        )

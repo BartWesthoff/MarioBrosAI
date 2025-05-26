@@ -9,7 +9,7 @@ import torch.optim as optim
 import numpy as np
 from btr.PER import PER
 # from torchsummary import summary
-from btr.networks import ImpalaCNNLarge, ImpalaCNNLargeIQN, ImpalaCNNLargeC51, NatureIQN,  FactorizedNoisyLinear, ImpoolaCNNLarge,ImpoolaCNNLargeIQN, ImpoolaCNNLargeC51
+from btr.networks import ImpalaCNNLarge, ImpalaCNNLargeIQN, NatureIQN, ImpalaCNNLargeC51, FactorizedNoisyLinear
 import btr.networks as networks
 from copy import deepcopy
 from functools import partial
@@ -63,7 +63,7 @@ def choose_eval_action(observation, eval_net, n_actions, device, rng):
 
 def create_network(impala, iqn, input_dims, n_actions, spectral_norm, device, noisy, maxpool, model_size, maxpool_size,
                    linear_size, num_tau, dueling, ncos, non_factorised, arch,
-                   layer_norm=False, activation="relu", c51=False,impoola=False):
+                   layer_norm=False, activation="relu", c51=False):
     if impala:
         if iqn:
             return ImpalaCNNLargeIQN(input_dims[0], n_actions, spectral=spectral_norm, device=device, noisy=noisy,
@@ -75,20 +75,6 @@ def create_network(impala, iqn, input_dims, n_actions, spectral_norm, device, no
                                   noisy=noisy, maxpool=maxpool, model_size=model_size, linear_size=linear_size)
         else:
             return ImpalaCNNLarge(input_dims[0], n_actions, spectral=spectral_norm, device=device,
-                                  noisy=noisy, maxpool=maxpool, model_size=model_size, maxpool_size=maxpool_size,
-                                  linear_size=linear_size)
-    elif impoola:
-        print(f"Using Impoola with {iqn=} and {c51=}")
-        if iqn:
-            return ImpoolaCNNLargeIQN(input_dims[0], n_actions, spectral=spectral_norm, device=device, noisy=noisy,
-                                     maxpool=maxpool, model_size=model_size, num_tau=num_tau, maxpool_size=maxpool_size,
-                                     dueling=dueling, linear_size=linear_size, ncos=ncos,
-                                     arch=arch, layer_norm=layer_norm, activation=activation)
-        if c51:
-            return ImpoolaCNNLargeC51(input_dims[0], n_actions, spectral=spectral_norm, device=device,
-                                  noisy=noisy, maxpool=maxpool, model_size=model_size, linear_size=linear_size)
-        else:
-            return ImpoolaCNNLarge(input_dims[0], n_actions, spectral=spectral_norm, device=device,
                                   noisy=noisy, maxpool=maxpool, model_size=model_size, maxpool_size=maxpool_size,
                                   linear_size=linear_size)
 
@@ -109,7 +95,7 @@ class Agent:
                  per_beta_anneal=False, layer_norm=False, max_mem_size=1048576, c51=False,
                  eps_steps=2000000, eps_disable=True,
                  activation="relu", n=3, munch_alpha=0.9,
-                 grad_clip=10,impoola=False):
+                 grad_clip=10):
 
         if rainbow:
             lr = 6.25e-5
@@ -195,7 +181,6 @@ class Agent:
         self.non_factorised = non_factorised
 
         self.impala = impala  # non impala only implemented for iqn
-        self.impoola = impoola
         self.dueling = dueling
 
         # Don't use both of these, they are mutually exclusive
@@ -263,7 +248,7 @@ class Agent:
                                           self.linear_size,
                                           self.num_tau, self.dueling, self.ncos,
                                           self.non_factorised, self.arch, layer_norm=self.layer_norm,
-                                          activation=self.activation, c51=self.c51,impoola=self.impoola)
+                                          activation=self.activation, c51=self.c51)
 
         self.net = self.network_creator_fn()
         self.tgt_net = self.network_creator_fn()
@@ -358,7 +343,7 @@ class Agent:
                 self.learn_call()
 
     def learn_call(self):
-        # print("entered learn call")
+        print("entered learn call")
         if self.env_steps < self.min_sampling_size:
             print(f"Not enough samples in memory: {self.env_steps} < {self.min_sampling_size}")
             return
@@ -374,7 +359,7 @@ class Agent:
             self.replace_target_network()
 
         idxs, states, actions, rewards, next_states, dones, weights = self.memory.sample(self.batch_size)
-        # print("Sample taken")
+        print("Sample taken")
         self.optimizer.zero_grad()
 
         # use this code to check your states are correct
@@ -507,7 +492,7 @@ class Agent:
             loss = loss_squared.mean().to(self.net.device)
 
         elif self.iqn and not self.munchausen:
-            # print("Using IQN")
+            print("Using IQN")
             with torch.no_grad():
 
                 Q_targets_next, _ = self.tgt_net(next_states)
@@ -556,7 +541,7 @@ class Agent:
             loss = loss.mean()
 
         elif self.iqn and self.munchausen:
-            # print("Using IQN with munchausen")
+            print("Using IQN with munchausen")
             with torch.no_grad():
                 Q_targets_next, _ = self.tgt_net(next_states)
 

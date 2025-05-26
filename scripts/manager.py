@@ -9,12 +9,7 @@ import sys
 import traceback
 import numpy as np
 from btr.Agent import Agent
-<<<<<<< HEAD
 from utils_func import agent_action
-torch.autograd.set_detect_anomaly(True)
-=======
->>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
-
 # ---- setup ----
 def project_root():
     current_dir = os.getcwd()
@@ -80,16 +75,7 @@ def handle_worker_connection(worker_id):
 
 
 # ----- CODE FOR MODEL AND TRAINING -----
-<<<<<<< HEAD
 ACTION_KEYS = list(agent_action({}).keys())
-=======
-ACTION_KEYS = [
-                "sprint_right",
-                "jump_right",
-                "move_right",
-                "move_left",
-                "none"]
->>>>>>> dc9e00eb0cf956e574760191356d75bc2df30d82
 ACTION_TO_INDEX = {action: idx for idx, action in enumerate(ACTION_KEYS)}
 NUM_ACTIONS = len(ACTION_KEYS)
 
