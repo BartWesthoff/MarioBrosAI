@@ -760,7 +760,7 @@ class ImpalaCNNLargeIQN(nn.Module):
         torch.save(self.state_dict(), name + ".model")
 
     def load_checkpoint(self, name):
-        #print('... loading checkpoint ...')
+        print('... loading checkpoint ...')
         self.load_state_dict(torch.load(name))
 
 

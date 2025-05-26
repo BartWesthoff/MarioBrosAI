@@ -303,11 +303,16 @@ class Agent:
             qvals = self.net.qvals(state, advantages_only=True)
             x = T.argmax(qvals, dim=1).cpu()
 
-            if self.env_steps < self.min_sampling_size or not self.noisy or \
-                    (self.env_steps < self.total_frames / 2 and self.eps_disable):
+            if False:
+                if self.env_steps < self.min_sampling_size or not self.noisy or \
+                        (self.env_steps < self.total_frames / 2 and self.eps_disable):
+                    
 
-                probs = self.epsilon.eps
-                x = randomise_action_batch(x, probs, self.n_actions)
+                    probs = self.epsilon.eps
+                    x = randomise_action_batch(x, probs, self.n_actions)
+
+                    print(f"Using random action")
+
 
             return x
 
@@ -327,7 +332,7 @@ class Agent:
         self.tgt_net.load_state_dict(self.net.state_dict())
 
     def save_model(self):
-        self.net.save_checkpoint(self.agent_name + "_" + str(int((self.env_steps // 250000))) + "M")
+        self.net.save_checkpoint(self.agent_name + "_" + str(int((self.env_steps // 25000))) + "M")
 
     def load_models(self, name):
         self.net.load_checkpoint(name)

@@ -1,6 +1,5 @@
 import os
 import sys
-# Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
 sys.path.append(os.path.join(os.getcwd(), 'scripts'))
@@ -41,8 +40,22 @@ def connect_to_socket():
             time.sleep(1)
 
 
-send_queue = queue.Queue()
-action_queue = queue.Queue()
+send_queue = queue.Queue(maxsize=50) # shouldnt have a small limit, this 50 is just to prevent exploding memory in case of mistiming
+action_queue = queue.Queue(maxsize=1) # to prevent action lagging
+reward_send_queue = queue.Queue()
+
+def reward_sender_thread(conn):
+    while True:
+        try:
+            avg_cumul_reward = reward_send_queue.get(block=True)  # blocking wait
+            data = pickle.dumps({"type": "avg_cumul_reward", "value": avg_cumul_reward["value"], "bucket_index": avg_cumul_reward["bucket_index"]})
+            size = len(data).to_bytes(4, "little")
+            conn.sendall(size + data)
+            print(f"[REWARD_THREAD] Sent avg cumulative reward (bucket {avg_cumul_reward['bucket_index']}): {avg_cumul_reward['value']:.3f}")
+
+        except Exception as e:
+            print(f"[REWARD_THREAD] Error sending reward data: {e}")
+
 
 def threaded_comm(conn):
     while True:
@@ -51,8 +64,10 @@ def threaded_comm(conn):
             data = pickle.dumps(experience)
             size = len(data).to_bytes(4, "little")
             conn.sendall(size + data)
+            sent_time = time.time()
+            print(f"[WORKER_THREAD] Sent experience at {sent_time}")
 
-            # Wait for response
+            # wait for response from manager
             size_bytes = conn.recv(4)
             size = int.from_bytes(size_bytes, "little")
             data = b""
@@ -61,6 +76,9 @@ def threaded_comm(conn):
 
             action = pickle.loads(data)
             action_queue.put(action)
+            action_time = time.time()
+            print(f"[WORKER_THREAD] Obtained action at {action_time}")
+            print(f"Cycle time: {action_time - sent_time:.4f} seconds")
 
         except Exception as e:
             print(f"[THREAD] Error in socket communication: {e}")
@@ -86,17 +104,16 @@ def threaded_preprocessor():
     while True:
         try:
             frames_batch, action, reward = preprocess_queue.get()
-
-            # Process in background
+            assert len(frames_batch) == 8, f"Expected 8 frames, got {len(frames_batch)}"
             state = preprocess_frames_cv2(frames_batch[:4])
-            next_state = preprocess_frames_cv2(frames_batch[1:])
+            next_state = preprocess_frames_cv2(frames_batch[4:])
             processed_queue.put((state, action, reward, next_state))
 
         except Exception as e:
             print(f"[PREPROCESSOR] Error: {e}")
 
 
-def preprocess_frames_cv2(frames, target_size=(140, 114), save=False):
+def preprocess_frames_cv2(frames, target_size=(140, 114)):
     img_arrays_list = []
     if len(frames) != 4:
         raise ValueError(f"Expected 4 frames, got {len(frames)}")
@@ -114,7 +131,6 @@ def preprocess_frames_cv2(frames, target_size=(140, 114), save=False):
 
 
     img_arrays = np.stack(img_arrays_list)
-    #img_array_width_height = img_arrays.transpose(0, 2, 1) # IMPORTANT: our model expects width height, our images are height width so we need to transpose
 
     return img_arrays
 
@@ -124,8 +140,8 @@ read_signal = threading.Event()
 shutdown_signal = threading.Event()
 def persistent_memory_reader():
     while not shutdown_signal.is_set():
-        read_signal.wait()  # Block until signaled
-        read_signal.clear()  # Reset signal for next use
+        read_signal.wait()  # blocks until set
+        read_signal.clear()  # reset signal for next use
 
         try:
             data = read_game_memory()
@@ -169,7 +185,7 @@ NUM_ACTIONS = len(ACTION_KEYS)
 
 
 class frameList:
-    def __init__(self, length=5):
+    def __init__(self, length=4):
         self.frames = deque(maxlen=length)
 
     def __len__(self):
@@ -181,108 +197,150 @@ class frameList:
     def append(self, frame):
         self.frames.append(frame)
 
-import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     print("------------------Starting worker script...--------------------")
+    episode_rewards = []
+    
+    cumul_reward_current_episode = 0.0
+    frame_batch_size = 500 # every 500 frames we will send an average cumulative reward to the manager 
     frame_count = 0
-    frameStorage = frameList()
-    rewards = []
-    experience_list = [] # experiences (state, action, reward, next_state)
+
+    last_logged_frame_count = 0
+
     checkpoints = generate_checkpoints(level1_start_x, level1_last_cp, num_checkpoints)
-    default_action = 'none'
+    default_action = "none"
     action = ACTION_TO_INDEX[default_action]
+    print(f"[WORKER] Using default action: {default_action} (index {action})")
     data = None
     socket_conn = connect_to_socket()
     threading.Thread(target=threaded_comm, args=(socket_conn,), daemon=True).start()
     threading.Thread(target=threaded_preprocessor, daemon=True).start()
     threading.Thread(target=persistent_memory_reader, daemon=True).start()
+    threading.Thread(target=reward_sender_thread, args=(socket_conn,), daemon=True).start()
 
 
-    action_repeat = 4
-    repeat_counter = 0
-
-    # move past initial frames, to skip initial loading of game
+    # move past initial frames, 10 is arbitrary, this is just so the memory is intialized so we can read from it
     for i in range(10):
         await event.framedrawn()
+
+    prev_chunk = None
+    frameStorage = frameList(length=4)
 
     while True:
         print(f"Start loop, frameCount: {frame_count}")
 
-        frameStorage.append(await event.framedrawn())           # frame 0
-        do_action(action)
-        await event.frameadvance()
+        
+        # C-captured frame
+        # S-skipped frame
+        # C-S-C-S-S-C-S-C, so we render 7 frames but only use 4 frames, also the last captured frame is only drawn after setting memory reader
+        mask = [1,0,1,0,0,1,0]
+        for i in range(7):
+            if mask[i]:
+                frameStorage.append(await event.framedrawn())
+            else:
+                await event.framedrawn()
+            do_action(action)
+        
+        # rendered 6 frames now, then we read memory with the semi-latest frame, so we are off sync by 1, but we have to since
+        # we need time to read memory
         read_signal.set()
 
-        frameStorage.append(await event.framedrawn())           # frame 1
+        # render last frame and append it to frameStorage
+        frameStorage.append(await event.framedrawn())
         do_action(action)
 
         old_data = data
-        try:
-            data = memory_queue.get_nowait()
-            print("Data aquired")
-        except queue.Empty:
-            print("\nWARNING: data was not available yet, reusing old data")
+        for i in range(2):
+            try:
+                data = memory_queue.get_nowait()
+                print("Data aquired")
+                break
+            except queue.Empty:
+                print(f"\nWARNING: data was not available yet, retrying ({i+1}/2)...")
+                time.sleep(0.003)
 
-        frameStorage.append(await event.framedrawn())           # frame 2
-        do_action(action)
-
-        frameStorage.append(await event.framedrawn())           # frame 3
-        do_action(action)
-
-        frameStorage.append(await event.framedrawn())                                # frame 4
-        do_action(action)
-        
         reward, new_checkpoint_idx = reward, new_checkpoint_idx = compute_reward(
         data, previous_lives, previous_mario_form, previous_checkpoint_idx, checkpoints,
         previous_x, previous_clock
         )
-        if len(rewards) == 5:
-            rewards.pop(0)
-        rewards.append(reward)
 
-        print(f"Rewards: {rewards}\tMean reward: {np.mean(rewards)}")
+        cumul_reward_current_episode += reward
+    
+        done = False
 
-        if len(frameStorage) == 5:
-            if repeat_counter == 0:
-                preprocess_queue.put((frameStorage.getFrames(), action, reward))
-                time.sleep(0.005)
-                try:
-                    state, action, reward, next_state = processed_queue.get_nowait()
-                    experience = (state, action, reward, next_state)
-                    experience_list.append(experience)
-                    send_queue.put(experience)
-                except queue.Empty:
-                    print("\nWARNING:No processed data yet, skipping this frame\n")
+        if data['cur_x'] >= level1_last_cp:
+            done = True
+            await event.framedrawn()
+            await event.framedrawn()
+            await event.framedrawn()
+            savestate.load_from_slot(3)  # reset to start of level
+            await event.framedrawn()
+            await event.framedrawn()
+            await event.framedrawn()
 
-                action = None
-                for i in range(3):
-                    try:
-                        action = action_queue.get_nowait()
-                        break
-                    except queue.Empty:
-                        print(f"[WORKER] No action received yet, retrying ({i+1}/3)...")
-                        time.sleep(0.05)
-                if action is None:
-                    print("\nWARNING:No action received, defaulting to action 5: None\n")
-                    action = ACTION_TO_INDEX['none']
-
-                repeat_counter = action_repeat
-
-            repeat_counter -= 1
 
         if previous_lives is not None and previous_lives > data['lives']:
             print("-------------------")
             print("Died, resetting state. Reward: ", reward)
             print("-------------------")
+            done = True
             await event.framedrawn()
-            savestate.load_from_slot(3)
             await event.framedrawn()
-        
+            await event.framedrawn()
+            savestate.load_from_slot(3) # might be excessive with the frame draw calls, but it prevents dolphin from freezing
+            await event.framedrawn()
+            await event.framedrawn()
+            await event.framedrawn()
+
+        if done:
+            episode_rewards.append(cumul_reward_current_episode)
+            cumul_reward_current_episode = 0.0
+
+            if frame_count - last_logged_frame_count >= frame_batch_size:
+                avg_cumul_reward = np.mean(episode_rewards)
+                batch_start_frame = last_logged_frame_count
+                bucket_index = batch_start_frame // frame_batch_size
+
+                reward_send_queue.put({
+                    "type": "avg_cumul_reward",
+                    "value": avg_cumul_reward,
+                    "bucket_index": bucket_index
+                })
+                print(f"[WORKER] Sent avg reward for frames (bucket {bucket_index}): {avg_cumul_reward:.3f}")
+                episode_rewards.clear()
+                last_logged_frame_count = frame_count
+
+
+        current_frames = frameStorage.getFrames()
+        if prev_chunk:
+            prev_frames, prev_action, prev_reward = prev_chunk
+
+            preprocess_queue.put((prev_frames+current_frames, prev_action, prev_reward))
+            try:
+                state, _, _, next_state = processed_queue.get(timeout=.1)
+                experience = (state, prev_action, prev_reward, next_state, done)
+                send_queue.put(experience)
+
+            except queue.Empty:
+                print("[WORKER] Skipped frame: no processed result")
+
+        for i in range(2):
+            try:
+                action = action_queue.get_nowait()
+                break
+            except queue.Empty:
+                print(f"[WORKER] No action received yet, retrying ({i+1}/3)...")
+                time.sleep(0.003)
+                if action is None:
+                    print("\nWARNING: No action received, defaulting to 'none'\n")
+                    action = ACTION_TO_INDEX[default_action]
+
+        prev_chunk = (current_frames, action, reward)
         previous_lives = data['lives']
         previous_mario_form = data['mario_form']
         previous_checkpoint_idx = new_checkpoint_idx
         previous_time = data['current_time']
-        frame_count += 1
+        frame_count += 7
         previous_x = data['cur_x']
         previous_clock = data['current_time']
