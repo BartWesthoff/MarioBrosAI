@@ -1,22 +1,5 @@
 import os
-import subprocess
-import threading
-import queue
-import torch
-import pickle
-import time
-import socket
 import sys
-import traceback
-import numpy as np
-from threading import Lock
-from btr.Agent import Agent
-from utils_func import agent_action
-
-
-memory_lock = Lock()
-log_queue = queue.Queue()
-
 # ---- setup ----
 def project_root():
     current_dir = os.getcwd()
@@ -26,6 +9,35 @@ def project_root():
         current_dir = os.path.dirname(current_dir)
     raise FileNotFoundError("Project root with 'requirements.txt' and 'README.md' not found.")
 root = project_root()
+
+import subprocess
+import threading
+import queue
+import torch
+import pickle
+import time
+import socket
+
+import traceback
+import numpy as np
+from threading import Lock
+from btr.Agent import Agent
+sys.path.append(os.path.join(root, "scripts"))
+
+from utils_func import agent_action
+
+
+from datetime import datetime, timedelta
+
+worker_last_seen = {}
+worker_processes = {}
+
+
+
+memory_lock = Lock()
+log_queue = queue.Queue()
+
+
 
 
 def logging_thread():
@@ -70,6 +82,8 @@ def handle_worker_connection(worker_id):
 
 
             experience = pickle.loads(data)
+            worker_last_seen[worker_id] = datetime.now()
+
 
             # we are collecting average cumulative reward and experiences over same socket, so we check
             # in case it is actually a reward message instead of an experience
@@ -101,6 +115,63 @@ def handle_worker_connection(worker_id):
             print(f"[MANAGER] Error with worker {worker_id}: {e}")
             traceback.print_exc()
             break
+
+
+def monitor_workers(timeout_seconds=60):
+    while True:
+        time.sleep(5)
+        now = datetime.now()
+        for worker_id, last_seen in list(worker_last_seen.items()):
+            if now - last_seen > timedelta(seconds=timeout_seconds):
+                print(f"[MANAGER] Worker {worker_id} has timed out. Restarting...")
+                restart_worker(worker_id)
+
+def restart_worker(worker_id):
+    try:
+        # kill the process if it is still running
+        proc = worker_processes.get(worker_id)
+        if proc and proc.poll() is None:
+            proc.kill()
+            print(f"[MANAGER] Killed unresponsive worker {worker_id}")
+
+        # reset last seen
+        worker_last_seen[worker_id] = datetime.now()
+
+        # close old connection if it exists
+        old_conn = conn_map.get(worker_id)
+        if old_conn:
+            try:
+                old_conn.close()
+            except:
+                pass
+
+        # relaunch socket
+        threading.Thread(target=handle_worker_connection, args=(worker_id,), daemon=True).start()
+
+        # restart worker
+        env = os.environ.copy()
+        env["WORKER_ID"] = str(worker_id)
+        user_folder = os.path.abspath(f"DolphinUser_{worker_id}")
+        os.makedirs(user_folder, exist_ok=True)
+
+        proc = subprocess.Popen([
+            dolphin_path,
+            game_path,
+            "--script",
+            online_trainer_path,
+            "--save_state",
+            game_save_dir,
+            "--no-python-subinterpreters",
+            "--user",
+            user_folder
+        ], env=env)
+
+        worker_processes[worker_id] = proc
+        print(f"[MANAGER] Relaunched Dolphin for worker {worker_id}")
+    except Exception as e:
+        print(f"[MANAGER] Failed to restart worker {worker_id}: {e}")
+        traceback.print_exc()
+
 
 
 # ----- CODE FOR MODEL AND TRAINING -----
@@ -149,7 +220,7 @@ def launch_workers():
             print(f"[MANAGER] User folder: {user_folder}")
 
             # Launch Dolphin with the worker script
-            subprocess.Popen([
+            PID = subprocess.Popen([
                 dolphin_path,
                 game_path,
                 "--script",
@@ -160,6 +231,9 @@ def launch_workers():
                 "--user",
                 user_folder
             ], env=env)
+            worker_processes[i] = PID
+
+            worker_last_seen[i] = datetime.now()
 
             print(f"[MANAGER] Dolphin launched with worker ID {i}")
     except Exception as e:
@@ -260,4 +334,5 @@ logging_thread.start()
 if __name__ == "__main__":
     load_model()
     launch_workers()
+    threading.Thread(target=monitor_workers, daemon=True).start()
     train()

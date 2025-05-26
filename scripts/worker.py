@@ -1,6 +1,5 @@
 import os
 import sys
-from utils_func import agent_action
 # Original paths
 sys.path.append(os.path.join(os.getenv('LOCALAPPDATA'), 'Programs', 'Python', 'Python311', 'Lib', 'site-packages'))
 sys.path.append(os.path.join(os.getenv('APPDATA'), 'Python', 'Python311', 'site-packages'))
@@ -12,7 +11,7 @@ if os.path.exists(venv_path):
     sys.path.append(venv_path)
     print(f"[WORKER] Added venv path: {venv_path}")
 
-
+from utils_func import agent_action
 import time
 import threading
 import pickle
