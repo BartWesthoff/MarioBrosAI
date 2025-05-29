@@ -91,7 +91,7 @@ def do_action(action):
     print(f"\t\t\tAction: {action_string}")
     button_map = {
         "sprint_right": {"Right": True, "B": True},
-        "jump_right": {"Right": True, "A": True, "B": True},
+        "jump_right": {"Right": True, "A": True, "B": False},
         "move_right": {"Right": True},
         "move_left": {"Left": True},
         "none": {}  # release all buttons

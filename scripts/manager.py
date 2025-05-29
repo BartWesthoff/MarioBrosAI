@@ -189,13 +189,13 @@ agent = Agent(
     device=device,
     num_envs=2,
     agent_name="online_agent",
-    total_frames=300_000, # set too high to avoid too fast epsilon decay
-    max_mem_size=10000, # maybe too high
+    total_frames=10_000_000, # set too high to avoid too fast epsilon decay
+    max_mem_size=20_000, # maybe too high
     imagex=114, # IMPORTANT: This is switched because their memory expects height x width, while the rest is width x height
     imagey=140,
-    target_replace=20,
+    target_replace=100,
     batch_size=128, # lowered batch size to 128 to compensate for higher replay ratio than before
-    #eps_steps=10_000,
+    eps_steps=300_000,
     testing=False,
     n=4, # frame step size, essentially (framestack - n) = overlap, per default its 3, so (4-3) = 1 overlap but we use (4-4) = 0 overlap
 )
@@ -276,26 +276,26 @@ def train():
 
     while True:
         time.sleep(1)
-        with memory_lock:
-            if agent.env_steps > 5:
-                idxs, states, actions, rewards, next_states, dones, weights = agent.memory.sample(1)
+        # with memory_lock:
+        #     if agent.env_steps > 5:
+        #         idxs, states, actions, rewards, next_states, dones, weights = agent.memory.sample(1)
 
-                #print(f"[MANAGER] Sampled experience: {idxs}, {states.shape}, {actions}, {rewards}, {next_states.shape}, {dones}")
+        #         #print(f"[MANAGER] Sampled experience: {idxs}, {states.shape}, {actions}, {rewards}, {next_states.shape}, {dones}")
 
-                for i in range(states.shape[0]):
-                    state = states[i]
-                    action = actions[i]
-                    reward = rewards[i]
-                    next_state = next_states[i]
-                    done = dones[i]
+        #         for i in range(states.shape[0]):
+        #             state = states[i]
+        #             action = actions[i]
+        #             reward = rewards[i]
+        #             next_state = next_states[i]
+        #             done = dones[i]
 
-                    # Save state's frames to .png for visual debugging
-                    for frame_idx in range(state.shape[0]):
-                       frame = state[frame_idx].cpu().numpy()
-                       plt.imsave(os.path.join(debug_dir, f"Y_manager_sampled_{frame_idx}.png"), frame, cmap='gray')
-                    for frame_idx in range(next_state.shape[0]):
-                       frame = next_state[frame_idx].cpu().numpy()
-                       plt.imsave(os.path.join(debug_dir, f"Z_manager_next_sampled_{frame_idx}.png"), frame, cmap='gray')
+        #             # Save state's frames to .png for visual debugging
+        #             for frame_idx in range(state.shape[0]):
+        #                frame = state[frame_idx].cpu().numpy()
+        #                plt.imsave(os.path.join(debug_dir, f"Y_manager_sampled_{frame_idx}.png"), frame, cmap='gray')
+        #             for frame_idx in range(next_state.shape[0]):
+        #                frame = next_state[frame_idx].cpu().numpy()
+        #                plt.imsave(os.path.join(debug_dir, f"Z_manager_next_sampled_{frame_idx}.png"), frame, cmap='gray')
 
         
         try:

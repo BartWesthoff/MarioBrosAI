@@ -141,7 +141,7 @@ class Agent:
         if self.testing:
             self.min_sampling_size = 4000
         else:
-            self.min_sampling_size = 200
+            self.min_sampling_size = 4000
 
         self.lr = lr
 
@@ -302,16 +302,13 @@ class Agent:
 
             qvals = self.net.qvals(state, advantages_only=True)
             x = T.argmax(qvals, dim=1).cpu()
+            print(f"Epsilon: {self.epsilon.eps}, Steps: {self.env_steps}, Grad steps: {self.grad_steps}")
+            if self.env_steps < self.min_sampling_size or not self.noisy or \
+                    (self.env_steps < self.total_frames / 2 and self.eps_disable):
+                
 
-            if False:
-                if self.env_steps < self.min_sampling_size or not self.noisy or \
-                        (self.env_steps < self.total_frames / 2 and self.eps_disable):
-                    
-
-                    probs = self.epsilon.eps
-                    x = randomise_action_batch(x, probs, self.n_actions)
-
-                    print(f"Using random action")
+                probs = self.epsilon.eps
+                x = randomise_action_batch(x, probs, self.n_actions)
 
 
             return x
